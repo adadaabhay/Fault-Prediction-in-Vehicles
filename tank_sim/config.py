@@ -17,12 +17,26 @@ class TankConfig:
 
     # --- Engine -----------------------------------------------------------------
     engine_displacement: float = 28.0      # L (diesel V12)
+    cylinders: int = 12                    # for firing-frequency acoustics
     max_speed_rpm: float = 2600.0          # RPM
     idle_speed_rpm: float = 800.0          # RPM
     engine_mass_thermal: float = 120.0     # kg (effective thermal mass)
     c_p_coolant: float = 4180.0            # J/(kg K) water-glycol coolant
     max_fuel_energy_rate: float = 2.5e6    # J/s full-throttle heat release
+    brake_thermal_efficiency: float = 0.42 # shaft power / fuel heat release
     coolant_power: float = 6000.0          # J/s per K of coolant delta-T (radiator + fan + oil cooler)
+    # --- Exhaust thermodynamics -------------------------------------------
+    exhaust_heat_fraction: float = 0.32    # of fuel heat release leaving via exhaust
+    c_p_exhaust_gas: float = 1150.0        # J/(kg K) combustion products
+    exhaust_mdot_ref: float = 1.35         # kg/s reference exhaust mass flow
+    lambda_reference: float = 1.8          # typical diesel part-load excess air
+    exhaust_tau_s: float = 4.0             # s manifold/turbine thermal lag
+    max_egt_c: float = 760.0               # pyrometer limit (cf. CVRDE 750 C)
+    exhaust_port_soak_c: float = 25.0      # K, exhaust port above head metal temp
+    # --- Cooling circuit regulation ---------------------------------------
+    thermostat_open_c: float = 88.0        # C, valve cracks open
+    thermostat_range_c: float = 10.0       # K, fully open at open_c + range
+    thermostat_bypass_leak: float = 0.06   # residual rejection when closed
 
     # --- Vibration --------------------------------------------------------------
     n_bearings: int = 12                   # rolling elements per bearing
@@ -44,6 +58,11 @@ class TankConfig:
     main_gallery_L: float = 0.5            # m main oil gallery length
     pump_discharge_pressure: float = 5.5e5 # Pa nominal pump head
     oil_pressure_noise: float = 0.02e5     # Pa
+    # Flowmeter noise, ~2% of the nominal 0.6-1.8e-3 m^3/s gallery flow.  Every
+    # transducer needs a noise term: a channel with none is not a measurement,
+    # it is a readback of whatever parameter produced it, and a fault-injection
+    # parameter published that way is a label leak.  See tests/test_leakage.py.
+    oil_flow_noise: float = 2.0e-5         # m^3/s
 
     # --- Oil debris -------------------------------------------------------------
     debris_gain: float = 1.0               # particles per second baseline
@@ -53,7 +72,8 @@ class TankConfig:
     gear_ratio: float = 12.0               # overall drivetrain ratio
     drive_r: float = 0.4                   # m sprocket / track drive radius
     shaft_radius: float = 0.06             # m
-    shaft_J: float = 6.5e-6                # m^4 polar moment of inertia
+    # Solid circular shaft: J = pi r^4 / 2 for shaft_radius = 0.06 m.
+    shaft_J: float = 2.036e-5              # m^4 polar moment of inertia
     shaft_shear_modulus: float = 79e9      # Pa steel G
     torque_efficiency: float = 0.92        # nominal drivetrain efficiency
     torque_noise: float = 15.0             # N*m
@@ -61,8 +81,11 @@ class TankConfig:
     # --- Exhaust ----------------------------------------------------------------
     exhaust_area: float = 0.03             # m^2
     exhaust_Rs: float = 287.0              # J/(kg K) for air-combustion mix
-    stoich_afr: float = 14.7               # diesel stoichiometric A/F ratio
+    stoich_afr: float = 14.5               # diesel stoichiometric A/F ratio
+    lambda_idle: float = 5.5               # excess-air ratio at no load
+    lambda_rated: float = 1.25             # excess-air ratio at rated power (smoke limit)
     lambda_noise: float = 0.01
+    mass_flow_noise: float = 0.015         # relative, hot-film flow noise
     exhaust_pressure_base: float = 1.25e5  # Pa
 
     # --- Fuel / fluid levels ----------------------------------------------------
@@ -72,12 +95,17 @@ class TankConfig:
     oil_sump_h: float = 0.35               # m oil level equivalent height
     coolant_h: float = 0.40                # m coolant expansion tank height
     fuel_burn_rate: float = 1.6e-4         # m^3/s full-load fuel burn
+    level_noise: float = 0.004             # fraction, capacitive probe noise
 
     # --- Hydraulics -------------------------------------------------------------
     hyd_pump_pressure: float = 2.1e7       # Pa (turret/stabilizer circuit)
     hyd_valve_area: float = 2.0e-4         # m^2
-    hyd_flow_noise: float = 0.005          # m^3/s
-    hyd_leak_area: float = 1.0e-7          # m^2 seal-leak equivalent area
+    # Command flow is hyd_valve_area * cmd ~ 1e-4 m^3/s; sensor noise must be a
+    # small fraction of that, not 25-50x it (which forced ~49% of samples to
+    # clip at exactly zero and made seal-leak detection impossible).
+    hyd_flow_noise: float = 4.0e-6         # m^3/s
+    hyd_leak_area: float = 6.0e-6          # m^2 seal-leak equivalent area
+    hyd_leak_noise: float = 8.0e-7         # m^3/s return-line flowmeter noise
 
     # --- Suspension / structure -------------------------------------------------
     suspension_E: float = 200e9            # Pa
@@ -88,16 +116,22 @@ class TankConfig:
     strain_gauge_R: float = 350.0          # Ohm nominal resistance
     suspension_area: float = 0.004         # m^2 effective loaded section
     vehicle_mass: float = 58000.0          # kg
-    suspension_noise: float = 0.5          # kN
+    roadwheel_stations: int = 14           # 7 per side
+    suspension_noise: float = 0.5          # kN load-cell noise
+    strain_noise_ue: float = 1.5           # microstrain, bridge excitation noise
 
     # --- Acoustic ---------------------------------------------------------------
     acoustic_base_spl: float = 105.0       # dB baseline SPL
     acoustic_noise: float = 0.4            # dB
     ae_event_rate_base: float = 2.0        # events/s baseline
-    ae_noise: float = 0.3
+    ae_noise: float = 0.3                  # dB, AE amplitude readout noise
+    ae_energy_noise: float = 0.25          # lognormal sigma on burst energy
 
     # --- Control / sampling -----------------------------------------------------
     dt: float = 0.05                       # s simulation time step
-    sample_rate: float = 1000.0            # Hz for high-frequency bursts
+    # Gear-mesh frequency reaches drive_pinion_teeth * max_speed_rpm / 60
+    # = 18 * 2600 / 60 = 780 Hz, so the burst rate must clear 1560 Hz to avoid
+    # folding the mesh tone (and its sidebands) back onto the shaft orders.
+    sample_rate: float = 4000.0            # Hz for high-frequency bursts
     window_samples: int = 2048             # samples per feature window
     noise_seed: int = 42

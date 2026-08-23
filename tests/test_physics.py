@@ -1,5 +1,10 @@
 import math
+import os
+import sys
+from pathlib import Path
 import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
 
@@ -188,6 +193,75 @@ class TestTankSimulator(unittest.TestCase):
         records = sim.run()
         temps = [r["coolant_temp"] for r in records]
         self.assertGreater(temps[-1], temps[0])
+
+    def test_zero_rpm_stall_state(self):
+        cfg = TankConfig()
+        f = characteristic_frequencies(cfg, 0.0)
+        self.assertEqual(f["f_r"], 0.0)
+        self.assertEqual(f["f_gmf"], 0.0)
+        self.assertEqual(f["BPFO"], 0.0)
+        self.assertEqual(f["BPFI"], 0.0)
+
+
+class TestLSTMGradientCheck(unittest.TestCase):
+    """The analytic gradients must match the *weighted* loss that training
+    actually minimises, with no correction factor applied at the call site.
+
+    The previous version of this test multiplied the analytic gradient by a
+    hardcoded 2.0 to make it agree.  That factor is w_reg * 2 / R, which is 2.0
+    only at R=2 -- the toy size used here.  At the real R=8 it is 0.5, so the
+    test passed while `backward` was silently optimising a different objective
+    than `loss` reported, and `--w-cls` had no effect on training at all.
+    """
+
+    def _check(self, R, C, w_reg, w_cls):
+        from ml.lstm import LSTMModel
+        model = LSTMModel(D=4, H=5, R=R, C=C, seed=42)
+        X = np.random.default_rng(42).normal(0, 1, (6, 4))
+        y_reg = np.random.default_rng(7).random(R)
+        y_cls = 1
+
+        grads = model.backward(model.forward(X), y_reg, y_cls,
+                               w_reg=w_reg, w_cls=w_cls)
+        eps = 1e-4
+        for name in ("Wy", "Wcls", "Wf", "Uc", "bo", "bcls"):
+            arr = model.p[name]
+            for idx in list(np.ndindex(arr.shape))[:4]:
+                orig = arr[idx]
+                arr[idx] = orig + eps
+                l_pos = model.loss(model.forward(X), y_reg, y_cls,
+                                   w_reg=w_reg, w_cls=w_cls)
+                arr[idx] = orig - eps
+                l_neg = model.loss(model.forward(X), y_reg, y_cls,
+                                   w_reg=w_reg, w_cls=w_cls)
+                arr[idx] = orig
+                num = (l_pos - l_neg) / (2 * eps)
+                self.assertLess(abs(grads[name][idx] - num), 1e-6,
+                                f"{name}{idx} R={R} w_reg={w_reg} w_cls={w_cls}")
+
+    def test_gradients_match_weighted_loss_at_toy_size(self):
+        self._check(R=2, C=3, w_reg=2.0, w_cls=0.4)
+
+    def test_gradients_match_weighted_loss_at_deployed_size(self):
+        self._check(R=8, C=13, w_reg=2.0, w_cls=1.5)
+
+    def test_loss_weights_actually_change_the_gradient(self):
+        from ml.lstm import LSTMModel
+        model = LSTMModel(D=4, H=5, R=8, C=13, seed=42)
+        X = np.random.default_rng(42).normal(0, 1, (6, 4))
+        y_reg = np.random.default_rng(7).random(8)
+        a = model.backward(model.forward(X), y_reg, 1, w_reg=2.0, w_cls=1.5)
+        b = model.backward(model.forward(X), y_reg, 1, w_reg=2.0, w_cls=0.1)
+        self.assertFalse(np.allclose(a["Wcls"], b["Wcls"]),
+                         "w_cls must reach the classification gradient")
+
+    def test_clip_grads_is_applied_not_discarded(self):
+        from ml.lstm import LSTMModel
+        model = LSTMModel(D=3, H=4, R=2, C=3, seed=0)
+        g = {k: np.ones_like(v) * 100.0 for k, v in model.p.items()}
+        clipped = model.clip_grads(g, 1.0)
+        norm = np.sqrt(sum(float(np.sum(v ** 2)) for v in clipped.values()))
+        self.assertAlmostEqual(norm, 1.0, places=6)
 
 
 if __name__ == "__main__":

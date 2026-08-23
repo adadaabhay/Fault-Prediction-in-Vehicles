@@ -40,8 +40,11 @@ class HydraulicSensor:
         p += self.rng.normal(0.0, 1e5)
         v = cfg.hyd_valve_area * cmd
         q = v + self.rng.normal(0.0, cfg.hyd_flow_noise)
-        leak_q = cfg.hyd_leak_area * np.sqrt(max(p, 0.0) / 1.0e7) * (1.0 + seal_leak)
-        q_net = max(q - leak_q, 0.0)
+        leak_q_true = cfg.hyd_leak_area * np.sqrt(max(p, 0.0) / 1.0e7) * (1.0 + seal_leak)
+        q_net = max(q - leak_q_true, 0.0)
+        # Return-line leak flow is a measurement, not a set-point.  Emitting
+        # leak_q_true let `hyd_seal_leak` be recovered in closed form.
+        leak_q = max(leak_q_true + self.rng.normal(0.0, cfg.hyd_leak_noise), 0.0)
         f_out = p * cfg.hyd_valve_area
         p_hyd = p * q_net
         return {

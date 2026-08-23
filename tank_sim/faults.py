@@ -16,6 +16,12 @@ from dataclasses import dataclass, field
 import numpy as np
 
 
+# Severity below which a fault is not yet present in the measured signal at a
+# level any detector could act on. Used to decide when a training label may
+# legitimately be asserted; see FaultManager.observable_faults.
+DETECTABLE_SEVERITY = 0.05
+
+
 @dataclass
 class FaultProfile:
     name: str
@@ -65,6 +71,7 @@ class FaultManager:
             "oil_temp_bias": lambda s: 0.4 * s,
         },
         "seal_leakage": {
+            "fuel_leak": lambda s: 4.0e-6 * s,
             "oil_leak": lambda s: 2.0e-5 * s,
             "hyd_seal_leak": lambda s: s,
             "coolant_leak": lambda s: 5.0e-5 * s,
@@ -117,6 +124,7 @@ class FaultManager:
             "vib_severity": 0.0, "vib_defect": "none", "debris_severity": 0.0,
             "oil_temp_bias": 0.0, "cooling_eff": 1.0, "pump_eff": 1.0,
             "gallery_r_mult": 1.0, "flow_mult": 1.0, "oil_leak": 0.0,
+            "fuel_leak": 0.0,
             "hyd_seal_leak": 0.0, "coolant_leak": 0.0, "fuel_mult": 1.0,
             "air_mult": 1.0, "restriction": 0.0, "stiffness_mult": 1.0,
             "fatigue_factor": 1.0, "ae_severity": 0.0, "valve_fault": 0.0,
@@ -124,7 +132,7 @@ class FaultManager:
         }
         additive = {"vib_severity", "debris_severity", "ae_severity",
                     "oil_temp_bias", "restriction", "valve_fault",
-                    "oil_leak", "hyd_seal_leak", "coolant_leak"}
+                    "oil_leak", "fuel_leak", "hyd_seal_leak", "coolant_leak"}
         for profile in self.profiles:
             s = profile.severity(step, self.rng)
             if s <= 0.0:
@@ -148,4 +156,27 @@ class FaultManager:
         return [p.name for p in self.profiles]
 
     def active_faults(self, step: int) -> list[str]:
+        """Faults whose onset has passed, regardless of how far they have run."""
         return [p.name for p in self.profiles if step >= p.start_step]
+
+    def observable_faults(self, step: int,
+                          threshold: float = DETECTABLE_SEVERITY) -> list[str]:
+        """Faults whose severity has grown enough to be present in the signal.
+
+        `active_faults` flips the instant the onset step is reached, where the
+        sigmoid ramp is still ~0. Training on that boundary asks the model to
+        call a fault from samples indistinguishable from healthy ones, which is
+        unlearnable by construction and shows up as an apparent accuracy
+        ceiling rather than as the labelling error it is.
+
+        The deterministic ramp is used here, not the jittered draw, so the
+        label never depends on RNG state.
+        """
+        out = []
+        for p in self.profiles:
+            if step < p.start_step:
+                continue
+            progress = (step - p.start_step) / max(p.ramp_steps, 1)
+            if p.max_severity * (1.0 - math.exp(-3.0 * progress)) >= threshold:
+                out.append(p.name)
+        return out

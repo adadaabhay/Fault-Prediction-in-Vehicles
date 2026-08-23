@@ -80,6 +80,10 @@ records = sim.run()                 # list of dict records
 write_dataset(sim, "data/run.csv")  # CSV with health features + labels
 ```
 
+`run()` resets the simulator first, so calling it repeatedly (as
+`write_dataset` does internally) always reproduces the same mission rather
+than continuing from the previous end state.
+
 ## Health fusion
 
 Following section 15 of the physics document, the fused health index
@@ -87,6 +91,20 @@ combines vibration RMS/kurtosis, oil temperature/pressure, debris rate,
 AE activity, structural stress and lambda into a single 0–100 score;
 `rul_steps` is obtained by linear extrapolation of the health-index
 trajectory to the failure threshold (section 16).
+
+Health is anchored to the documented thresholds: a subsystem whose worst
+parameter sits exactly at its critical threshold scores `FAIL_HEALTH`, so the
+health curve and the threshold alarms cannot disagree. Deviation is one-sided
+(being better than the healthy reference is never penalised), and monotonically
+accumulating counters (total debris, cumulative twist) and consumables (fuel
+level) are excluded from scoring — including them made health a proxy for
+elapsed mission time rather than condition. `overall` is fused from the
+subsystem healths rather than scored from its own parameters.
+
+Load-driven channels (shaft torque, road-wheel load, shock RMS) are shown but
+excluded from health, since duty is not degradation. The condition indicators
+are the load-normalised ones: `susp_compliance` (strain per unit load) and
+`driveline_efficiency`.
 
 ## Live dashboard (GitHub Pages)
 
@@ -112,6 +130,56 @@ Regenerate model + stream after changing the simulator or training:
 ```bash
 python -m ml.train --epochs 28 --stride 8 --demo-steps 3000
 ```
+
+## Validation
+
+The model is trained on simulated data, so what it scores and on what has to be
+stated precisely.
+
+**Split.** Scenarios are grouped into (fault family x duty profile) cells across
+five duty profiles (road march, cross country, assault, convoy idle, recovery
+tow). A whole cell goes to train, validation or test; no cell straddles a split,
+so a held-out scenario has no near-duplicate sibling in training. Every fault
+class is present in all three splits -- holding out a class entirely would make
+its accuracy vacuously zero rather than informative. The feature scaler is
+fitted on the training scenarios only.
+
+**Reported figures** (`python -m ml.train`):
+
+| Split | RUL MAE | Fault-class accuracy |
+|---|---|---|
+| validation (selected the checkpoint) | 221 steps | 0.850 |
+| **test** (scored once, after selection) | **213 steps** | **0.854** |
+
+Only the test row is a generalisation estimate. Validation drove checkpoint
+selection, so quoting it would be quoting a training statistic.
+
+Per-class accuracy is not uniform, and the weak cells are real diagnostic gaps
+rather than noise: `gear_wear` under a low-load duty cycle scores 0.31-0.58,
+because the mesh-sideband signature is not separable when the drivetrain is
+barely loaded. `exhaust_restriction` (0.42-0.75) and `cooling_failure`
+(0.51-0.74) are similar. Bearing, seal-leak, structural-crack and
+torsion-fatigue cells score 0.96-0.99.
+
+**What this does not demonstrate.** Generalisation across duty cycle and fault
+onset, within one simulator and one vehicle. It says nothing about transfer to
+real hardware. The only sim-to-real evidence in this project is the real-corpus
+benchmark in `../benchmark/evaluate_subsystems.py` (ZeMA hydraulic rig,
+MetroPT-3 APU, Scania APS, naval gas turbine, SCANIA Component X).
+
+### Label leakage
+
+Nine channels were previously published as noiseless readbacks of the injected
+fault severity rather than as measurements -- `driveline_efficiency` was
+literally `max(1 - 0.18*s, 0.7)`, so a depth-1 threshold on it scored 0.9988 on
+its own fault class. `debris_rate` and `ae_event_rate` also fed the health
+index, so the leak reached the RUL targets and the regression was circular.
+
+`tests/test_leakage.py` guards this with a general invariant rather than a
+blocklist: hold the fault trajectory fixed, re-roll only the measurement noise,
+and every emitted channel must move. A channel identical across two independent
+noise realisations is not a measurement -- it is whichever parameter produced
+it, published under a sensor's name. That catches the next one before it ships.
 
 ## Testing
 

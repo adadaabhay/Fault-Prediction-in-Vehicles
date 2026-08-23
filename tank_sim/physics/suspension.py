@@ -52,16 +52,38 @@ class StrainSensor:
     def read(self, vertical_accel_g: float, stiffness_mult: float = 1.0,
              fatigue_factor: float = 1.0) -> dict[str, float]:
         cfg = self.cfg
-        force = cfg.vehicle_mass * 9.81 * vertical_accel_g / 6.0  # per road-wheel
-        sigma = force / cfg.suspension_area * fatigue_factor
-        eps = sigma / (cfg.suspension_E * stiffness_mult)
+        # Load is shared across all road-wheel stations (both sides).
+        force = (cfg.vehicle_mass * 9.81 * vertical_accel_g
+                 / max(cfg.roadwheel_stations, 1))
+        # A fatigued member carries the same load through a reduced effective
+        # section, so the factor must reach force and stress alike -- previously
+        # stress was scaled and load was not, leaving the reported channels
+        # mutually contradictory whenever a fault was active.
+        force_eff = force * fatigue_factor
+        noise_kN = self.rng.normal(0.0, cfg.suspension_noise)
+        force_kN = force_eff / 1000.0 + noise_kN
+        # Derive the rest from the *measured* load so every channel stays
+        # consistent with it (previously only the load carried sensor noise).
+        sigma = (force_kN * 1000.0) / cfg.suspension_area
+        # The strain bridge is a *separate* transducer from the load cell, with
+        # its own excitation noise and thermal drift.  Deriving strain purely
+        # from the measured load made `susp_compliance` (= strain / load)
+        # collapse to 1e6/(A*E*stiffness_mult) -- a constant divided by the
+        # injected stiffness multiplier, i.e. the fault parameter in closed
+        # form.  Independent noise is what makes it an estimate.
+        eps_true = sigma / (cfg.suspension_E * stiffness_mult)
+        eps = max(eps_true + self.rng.normal(0.0, cfg.strain_noise_ue * 1e-6), 0.0)
         dR = cfg.strain_gauge_GF * eps * cfg.strain_gauge_R
-        force_kN = force / 1000.0 + self.rng.normal(0.0, cfg.suspension_noise)
+        # Strain per unit load: rises when the member softens (fatigue,
+        # reduced stiffness) but is invariant to how hard the terrain is
+        # loading it, so it separates condition from duty.
+        compliance = (eps * 1e6) / max(abs(force_kN), 1e-6)
         return {
             "susp_load_kN": float(force_kN),
             "susp_stress_MPa": float(sigma / 1e6),
             "susp_strain_ue": float(eps * 1e6),
             "susp_dR_ohm": float(dR),
+            "susp_compliance": float(compliance),
         }
 
 

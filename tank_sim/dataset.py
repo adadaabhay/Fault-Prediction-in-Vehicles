@@ -5,8 +5,6 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-import numpy as np
-
 from .features import HealthFeatures
 from .tank import TankSimulator
 

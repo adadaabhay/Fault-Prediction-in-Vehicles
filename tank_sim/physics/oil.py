@@ -39,6 +39,16 @@ import math
 import numpy as np
 
 from ..config import TankConfig
+from .temperature import ThermalSystem
+
+# Time constant (s) of the count-based rate estimators. A real inductive
+# debris monitor / AE hit counter reports an *integrated* rate over a fixed
+# period, so the estimator is a warm-started exponential moving average rather
+# than a growing-window mean: a growing window divides the first count by a
+# single dt, which reads 20 particles/s off one particle and trips a 15/s
+# critical threshold on a healthy engine.
+RATE_TAU_S = 2.0
+
 
 
 def oil_viscosity(cfg: TankConfig, temperature_c: float) -> float:
@@ -70,19 +80,25 @@ class OilPressureSensor:
              flow_mult: float = 1.0) -> dict[str, float]:
         cfg = self.cfg
         mu = oil_viscosity(cfg, thermal.T_oil)
-        # Flow scales with engine speed and load.
-        q = (0.0006 + 0.0012 * load) * flow_mult
-        dP_filter = pressure_drop(cfg, mu, q, cfg.filter_r, cfg.filter_L)
-        dP_gallery = pressure_drop(cfg, mu, q,
+        # Flow scales with load (pump displacement per unit demand).
+        q_true = (0.0006 + 0.0012 * load) * flow_mult
+        dP_filter = pressure_drop(cfg, mu, q_true, cfg.filter_r, cfg.filter_L)
+        dP_gallery = pressure_drop(cfg, mu, q_true,
                                    cfg.main_gallery_r * gallery_r_mult,
                                    cfg.main_gallery_L)
         p = cfg.pump_discharge_pressure * pump_eff - dP_filter - dP_gallery
         p += self.rng.normal(0.0, cfg.oil_pressure_noise)
+        # The pressure drops above are formed from the *true* flow (that is the
+        # physics), but the reported flow is what a turbine/gear flowmeter
+        # actually returns: the true value plus transducer noise.  Emitting
+        # q_true made `oil_flow` an exact algebraic inverse of the injected
+        # `flow_mult` -- the fault parameter itself published as a channel.
+        q_measured = max(q_true + self.rng.normal(0.0, cfg.oil_flow_noise), 0.0)
         return {
             "oil_pressure": float(max(p, 0.0)),
             "oil_temp": thermal.T_oil,
             "oil_viscosity": mu,
-            "oil_flow": q,
+            "oil_flow": float(q_measured),
         }
 
 
@@ -102,6 +118,12 @@ class OilDebrisSensor:
         self.coil_l = 0.02
         self.count = 0.0
         self.last_count = 0.0
+        # Rate estimate over observed particle counts.  A real inductive debris
+        # monitor reports a rate *estimated* from detected events; it has no
+        # access to the underlying generation rate.  Warm-started at the
+        # baseline so the channel does not read a spurious excursion before the
+        # filter has settled.
+        self._rate_est = float(cfg.debris_gain)
 
     def base_inductance(self, mu: float) -> float:
         return mu * self.coil_N**2 * self.coil_A / self.coil_l
@@ -109,14 +131,20 @@ class OilDebrisSensor:
     def read(self, severity: float, dt: float) -> dict[str, float]:
         cfg = self.cfg
         rate = cfg.debris_gain * (1.0 + 30.0 * severity)
+        expected = rate * dt
+        particles_this_step = float(self.rng.poisson(max(expected, 0.0)))
         self.last_count = self.count
-        self.count += rate * dt
-        count_in_window = max(self.count - self.last_count, 0.0)
-        rate_noise = self.rng.poisson(max(count_in_window, 0.0))
-        particles_this_step = rate_noise * (1.0 + cfg.debris_noise * severity)
-        cumulative = self.count * (1.0 + 0.5 * severity)
+        self.count += particles_this_step
+        # Rate estimated from the counts the coil actually registered.
+        # Publishing the analytic `rate` instead made this channel a noiseless
+        # bijection of the injected severity (rate = debris_gain*(1 + 30*s)),
+        # so a classifier could read the fault parameter straight off it.
+        alpha = min(max(dt, 1e-9) / RATE_TAU_S, 1.0)
+        self._rate_est += alpha * (particles_this_step / max(dt, 1e-9)
+                                   - self._rate_est)
+        rate_measured = max(self._rate_est, 0.0)
         return {
-            "debris_particles": float(particles_this_step),
-            "debris_cumulative": float(cumulative),
-            "debris_rate": float(rate * (1.0 + severity)),
+            "debris_particles": particles_this_step,
+            "debris_cumulative": float(self.count),
+            "debris_rate": float(rate_measured),
         }

@@ -18,6 +18,9 @@
   <div class="status-box">
     <span class="status-label">SYSTEM STATUS</span>
     <div id="statusBadge" class="badge healthy">INITIALISING</div>
+    <!-- Which source the operator is looking at. A HUD that cannot tell live
+         hardware from a recorded replay is worse than one with no live mode. -->
+    <div id="sourceBadge" class="badge healthy" title="">SIMULATION REPLAY</div>
   </div>
   <div class="clock-box">
     <span class="status-label"><i id="liveDot" class="live-dot"></i> LIVE MISSION TIME</span>
@@ -35,10 +38,25 @@
     <button data-speed="5" class="speed-btn">5&times;</button>
     <button data-speed="10" class="speed-btn">10&times;</button>
   </div>
+  <div class="stream-group">
+    <label>TACTICAL STREAM</label>
+    <button data-stream="sim_mbt" class="stream-btn active" id="btn_sim_mbt">58t MBT (Sim)</button>
+    <button data-stream="cvrde_arjun" class="stream-btn" id="btn_cvrde_arjun">CVRDE Arjun Mk-1A (Sim)</button>
+    <button data-stream="real_deutz" class="stream-btn" id="btn_real_deutz">Deutz V6 (Bench)</button>
+    <button data-stream="real_zema" class="stream-btn" id="btn_real_zema">ZeMA Hydraulics (Rig)</button>
+    <button data-stream="real_metropt" class="stream-btn" id="btn_real_metropt">MetroPT-3 APU (In-Service)</button>
+  </div>
   <span class="live-tag"><i class="live-dot"></i> LIVE FEED</span>
   <span class="mission-name" id="missionName">loading…</span>
   <span id="injectedFaults" class="fault-chips"></span>
+  <span id="streamProvenance" class="stream-provenance"></span>
 </section>
+
+<!-- Active SAE J1939-73 DM1 diagnostic trouble codes from the gateway. -->
+<div class="dtc-bar">
+  <span class="status-label">ACTIVE DTCs (DM1)</span>
+  <span id="dtcChips" class="fault-chips"><span class="m-sub">no active DTCs</span></span>
+</div>
 
 <div id="sosBanner" class="sos hidden">
   &#128680; <b>SOS — CRITICAL FAULT</b> &#128680;

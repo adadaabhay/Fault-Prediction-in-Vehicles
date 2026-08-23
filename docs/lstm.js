@@ -5,7 +5,7 @@
 
 const LSTM = {
   _sigmoid(z) { return 1.0 / (1.0 + Math.exp(-Math.max(-40, Math.min(40, z)))); },
-  _tanh(z) { const e = Math.exp(2 * z); return (e - 1) / (e + 1); },
+  _tanh(z) { return Math.tanh(z); },
 
   /* matVec: W is (D,H) row-major array-of-arrays, v is D-vector -> H-vector */
   _matVec(W, v) {
@@ -57,4 +57,12 @@ function rollingWindow(size, dim, fill) {
     push(vec) { buf.push(vec); if (buf.length > size) buf.shift(); return buf.slice(); },
     current: () => buf.slice(),
   };
+}
+
+/* Exported when loaded under Node (tests/test_js_python_parity.py), inert in
+ * the browser where the script tag defines LSTM as a global. Without this the
+ * only way to exercise this file outside a browser was to eval() it, and CI
+ * consequently checked nothing beyond `node --check`. */
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { LSTM, rollingWindow };
 }

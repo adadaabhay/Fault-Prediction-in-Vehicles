@@ -25,13 +25,6 @@ import numpy as np
 
 from ..config import TankConfig
 
-TANK_GEOMETRY = {
-    "fuel": {"radius": None, "permittivity": None},
-    "oil": {"radius": None, "permittivity": None},
-    "coolant": {"radius": None, "permittivity": None},
-}
-
-
 def capacitance_level(cfg: TankConfig, height_frac: float,
                       permittivity_r: float, area: float, gap: float) -> float:
     """Capacitance (F) of a level sensor partially immersed in liquid."""
@@ -64,15 +57,28 @@ class LevelSensor:
         self.oil_h = max(self.oil_h - oil_leak * dt / 0.08, 0.05)
         self.coolant_h = max(self.coolant_h - coolant_leak * dt / 0.06, 0.05)
 
-        fuel_frac = self.fuel_h / cfg.fuel_tank_h
-        oil_frac = self.oil_h / cfg.oil_sump_h
-        coolant_frac = self.coolant_h / cfg.coolant_h
+        # Capacitive level probes are noisy: slosh, thermal drift of the
+        # dielectric constant, and ADC quantisation.  This sensor previously
+        # held an `rng` and never drew from it, so `oil_level` and
+        # `coolant_level` were exact integrals of the injected `oil_leak` /
+        # `coolant_leak` parameters -- closed-form readbacks of the
+        # seal_leakage and cooling_failure severities.
+        n = self.rng.normal
+        fuel_frac = self.fuel_h / cfg.fuel_tank_h + n(0.0, cfg.level_noise)
+        oil_frac = self.oil_h / cfg.oil_sump_h + n(0.0, cfg.level_noise)
+        coolant_frac = self.coolant_h / cfg.coolant_h + n(0.0, cfg.level_noise)
+        fuel_frac = float(np.clip(fuel_frac, 0.0, 1.2))
+        oil_frac = float(np.clip(oil_frac, 0.0, 1.2))
+        coolant_frac = float(np.clip(coolant_frac, 0.0, 1.2))
 
         return {
             "fuel_level": float(fuel_frac),
             "oil_level": float(oil_frac),
             "coolant_level": float(coolant_frac),
+            # Both derive from the *measured* fuel level, so they stay
+            # consistent with the channel an operator actually sees.
             "fuel_capacitance_pf": float(capacitance_level(
                 cfg, fuel_frac, cfg.fuel_permittivity, self.area, self.gap) * 1e12),
-            "fuel_volume": float(np.pi * cfg.fuel_tank_r**2 * self.fuel_h),
+            "fuel_volume": float(np.pi * cfg.fuel_tank_r**2
+                                 * fuel_frac * cfg.fuel_tank_h),
         }

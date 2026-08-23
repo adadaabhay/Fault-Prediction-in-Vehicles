@@ -21,6 +21,24 @@ const DASH = {
 
 function $(id) { return document.getElementById(id); }
 
+/* Health lookup with bounds and presence checks. Returns null when the stream
+ * does not carry health for that part/index, so callers can distinguish
+ * "no data" from "healthy". */
+function healthAt(pid, idx, fallback) {
+  const h = LiveFeed.stream && LiveFeed.stream.health;
+  if (!h || !h[pid] || idx < 0 || idx >= h[pid].length) {
+    return (fallback === undefined) ? null : fallback;
+  }
+  const v = h[pid][idx];
+  return (typeof v === "number" && isFinite(v)) ? v : ((fallback === undefined) ? null : fallback);
+}
+
+/* Channels a stream declares as schema placeholders rather than measurements. */
+function isSyntheticChannel(key) {
+  const m = LiveFeed.stream && LiveFeed.stream.meta;
+  return !!(m && Array.isArray(m.channels_synthetic) && m.channels_synthetic.indexOf(key) !== -1);
+}
+
 /* ---------------- parameter value helpers ---------------- */
 function scaledValue(param, raw) {
   return (param.scale !== undefined) ? raw * param.scale : raw;
@@ -121,7 +139,8 @@ function renderTrack(pid, p, raw) {
 
 /* ---------------- event log ---------------- */
 function missionTimeString(rec, cycle) {
-  const totalS = rec.time + cycle * LiveFeed.durationS;
+  const recTime = (rec && typeof rec.time === "number") ? rec.time : (LiveFeed.idx * (DASH.config ? DASH.config.dt : 0.1));
+  const totalS = recTime + (cycle || 0) * (LiveFeed.durationS || 60.0);
   const h = Math.floor(totalS / 3600), m = Math.floor(totalS / 60) % 60,
         s = Math.floor(totalS % 60);
   const pad = x => String(x).padStart(2, "0");
@@ -159,7 +178,7 @@ function detectParamEvents(pid, rec, health, tstr) {
   const part = DASH.config.parts[pid];
   for (const p of part.params) {
     const raw = rec[p.key];
-    if (raw === undefined) continue;
+    if (raw === undefined || isSyntheticChannel(p.key)) continue;
     const s = paramStatus(p, raw);
     const prev = st.prevStatus[p.key] || "ok";
     if (s === st.lastStatus[p.key]) st.statusCount[p.key] += 1;
@@ -205,6 +224,21 @@ function detectAiEvent(cls, tstr) {
   }
 }
 
+/* ---------------- stream provenance banner ---------------- */
+function renderProvenance(stream) {
+  const el = $("streamProvenance");
+  if (!el) return;
+  const m = (stream && stream.meta) || {};
+  if (!m.health_provenance && !m.channels_measured) { el.textContent = ""; return; }
+  const measured = (m.channels_measured || []).length + (m.channels_measured_extra || []).length;
+  const synth = (m.channels_synthetic || []).length;
+  const bits = [];
+  if (m.source) bits.push(m.source);
+  bits.push(measured + " measured / " + synth + " placeholder channels");
+  if (m.health_provenance) bits.push("health: " + m.health_provenance.replace(/_/g, " "));
+  el.textContent = bits.join(" · ");
+}
+
 /* ---------------- per-part update ---------------- */
 function updatePart(pid, rec, healthVal, rulFrac) {
   const part = DASH.config.parts[pid];
@@ -226,12 +260,16 @@ function updatePart(pid, rec, healthVal, rulFrac) {
     const raw = rec[p.key];
     if (raw === undefined) continue;
     const val = scaledValue(p, raw);
-    const stat = paramStatus(p, raw);
+    const stat = isSyntheticChannel(p.key) ? "ok" : paramStatus(p, raw);
     if (stat === "crit") worst = "crit"; else if (stat === "warn" && worst !== "crit") worst = "warn";
 
     const vEl = $("val_" + pid + "_" + p.key);
-    vEl.textContent = fmtVal(val, p) + (p.unit ? " " + p.unit : "");
-    vEl.className = "p-val " + stat;
+    const synthetic = isSyntheticChannel(p.key);
+    vEl.textContent = synthetic ? "n/a" : fmtVal(val, p) + (p.unit ? " " + p.unit : "");
+    vEl.className = "p-val " + (synthetic ? "synthetic" : stat);
+    vEl.title = synthetic
+      ? "This stream does not carry this channel; value is a schema placeholder, not a measurement."
+      : "";
     renderTrack(pid, p, raw);
 
     const hist = st.hist[p.key];
@@ -253,21 +291,32 @@ function updatePart(pid, rec, healthVal, rulFrac) {
 }
 
 function rulText(frac) {
-  const steps = frac * DASH.config.rul_cap_steps;
-  const hours = steps * DASH.config.dt / 3600;
+  /* RUL is expressed in simulation steps. rul_cap_steps * dt is only ~120 s of
+   * simulated time, so the old wall-clock branches were unreachable and every
+   * readout -- including a vehicle at 100% life -- rendered as
+   * "CRITICAL - 120 s remaining". Report life fraction and steps, and convert
+   * to operating hours only when config declares a step->hours mapping. */
   const pct = Math.max(0, Math.min(100, frac * 100));
-  if (hours >= 2) return `≈ ${hours.toFixed(1)} h remaining  (${pct.toFixed(0)}% life)`;
-  if (hours >= 0.1) return `≈ ${(hours * 60).toFixed(0)} min remaining  (${pct.toFixed(0)}% life)`;
-  return `CRITICAL — ${(hours * 3600).toFixed(0)} s remaining`;
+  const steps = Math.round(frac * DASH.config.rul_cap_steps);
+  const perStep = DASH.config.rul_step_hours;
+  if (typeof perStep === "number" && perStep > 0) {
+    const hours = steps * perStep;
+    if (hours >= 2) return `≈ ${hours.toFixed(1)} h remaining  (${pct.toFixed(0)}% life)`;
+    return `≈ ${(hours * 60).toFixed(0)} min remaining  (${pct.toFixed(0)}% life)`;
+  }
+  if (pct < 5) return `CRITICAL — ${steps} steps remaining  (${pct.toFixed(0)}% life)`;
+  return `${steps} steps remaining  (${pct.toFixed(0)}% life)`;
 }
 
 /* ---------------- LSTM prediction ---------------- */
 function normaliseFeatures(rec) {
   const feat = [];
   for (const key of DASH.config.input_features) {
-    const v = rec[key];
     const s = DASH.config.scaler[key];
-    feat.push(Math.max(0, Math.min(1, (v - s.min) / Math.max(s.max - s.min, 1e-9))));
+    const v = (rec && rec[key] !== undefined && !isNaN(Number(rec[key]))) ? Number(rec[key]) : (s ? (s.min + s.max) * 0.5 : 0.0);
+    const min = s ? s.min : 0.0;
+    const max = s ? s.max : 1.0;
+    feat.push(Math.max(0, Math.min(1, (v - min) / Math.max(max - min, 1e-9))));
   }
   return feat;
 }
@@ -312,8 +361,14 @@ function updateOverall(rec, reg, cls, overallHealth) {
   vrEl.textContent = rec.vib_rms.toFixed(2);
   vrEl.className = "digital small " + (rec.vib_rms > 1.2 ? "crit" : (rec.vib_rms > 0.75 ? "warn" : ""));
 
-  const worstPart = Math.min(...Object.keys(DASH.parts)
-    .map(pid => LiveFeed.stream.health[pid][LiveFeed.idx]));
+  /* Guarded: a stream whose health arrays are shorter than its records (or
+   * missing a part entirely) previously produced NaN here, and every
+   * comparison against NaN is false, so the status silently fell through to
+   * "healthy". Absent data must never read as green. */
+  const partHealths = Object.keys(DASH.parts)
+    .map(pid => healthAt(pid, LiveFeed.idx))
+    .filter(v => typeof v === "number" && isFinite(v));
+  const worstPart = partHealths.length ? Math.min(...partHealths) : 100;
   let status;
   if (overallHealth < DASH.config.fail_health || overallFrac < 0.03 || worstPart < DASH.config.fail_health) {
     status = "sos";
@@ -342,8 +397,8 @@ function setStatus(status, rec) {
   if (status === "sos") {
     for (const pid of DASH.config.part_order) {
       if (pid === "overall") continue;
-      const h = LiveFeed.stream.health[pid][LiveFeed.idx];
-      if (h < DASH.config.fail_health) detail.push(DASH.config.parts[pid].label);
+      const h = healthAt(pid, LiveFeed.idx);
+      if (h !== null && h < DASH.config.fail_health) detail.push(DASH.config.parts[pid].label);
     }
     banner.classList.remove("hidden");
     $("sosDetail").textContent = detail.length
@@ -449,7 +504,7 @@ function updateModal() {
   if (!pid) return;
   const rec = LiveFeed.records[LiveFeed.idx];
   const idx = LiveFeed.idx;
-  const health = LiveFeed.stream.health[pid][idx];
+  const health = healthAt(pid, idx, 100);
   const j = DASH.config.part_order.indexOf(pid);
   const rulFrac = DASH.lastReg ? DASH.lastReg[j] : 1;
 
@@ -497,12 +552,12 @@ function onFrame(rec, idx, cycle) {
   for (const pid of DASH.config.part_order) {
     if (pid === "overall") continue;
     const j = DASH.config.part_order.indexOf(pid);
-    const health = LiveFeed.stream.health[pid][idx];
+    const health = healthAt(pid, idx, 95.0);
     const w = updatePart(pid, rec, health, reg[j]);
     detectParamEvents(pid, rec, health, tstr);
     if (w === "crit") worstOverall = "crit"; else if (w === "warn" && worstOverall !== "crit") worstOverall = "warn";
   }
-  const overallHealth = LiveFeed.stream.health.overall[idx];
+  const overallHealth = healthAt("overall", idx, 95.0);
   updateOverall(rec, reg, cls, overallHealth);
   detectAiEvent(cls, tstr);
   updateModal();
@@ -513,7 +568,8 @@ function onFrame(rec, idx, cycle) {
 
 function onCycleWrap(cycle) {
   // restart LSTM window and detection latches for the new pass
-  const first = normaliseFeatures(LiveFeed.records[0]);
+  const rec0 = (LiveFeed.records && LiveFeed.records.length > 0) ? LiveFeed.records[0] : {};
+  const first = normaliseFeatures(rec0);
   DASH.windowBuf = rollingWindow(DASH.config.window, DASH.config.input_features.length, first);
   DASH.clsEpisode = { name: null, armed: true };
   for (const pid of Object.keys(DASH.parts)) {
@@ -522,6 +578,138 @@ function onCycleWrap(cycle) {
     DASH.parts[pid].lastStatus = {};
     DASH.parts[pid].failLatched = false;
   }
+}
+
+
+/* ---------------- live hardware source ---------------- */
+/* When the gateway is reachable, frames come from it and carry health, DTCs
+ * and prognosis already computed by telemetry_gateway/pipeline.py. When it is
+ * not, the recorded mission in LiveFeed drives the HUD instead. The badge must
+ * always say which of the two the operator is looking at -- a HUD that cannot
+ * distinguish live hardware from a replay is worse than one with no live mode
+ * at all. */
+const LiveSource = {
+  mode: "replay",           // "live" | "replay"
+  detail: "",
+
+  setBadge(state, detail) {
+    const el = $("sourceBadge");
+    if (!el) return;
+    const map = {
+      live:        ["LIVE HARDWARE STREAM", "healthy"],
+      connecting:  ["CONNECTING TO GATEWAY", "degraded"],
+      stalled:     ["GATEWAY STALLED - REPLAY", "degraded"],
+      disconnected:["GATEWAY DOWN - REPLAY", "degraded"],
+      unavailable: ["SIMULATION REPLAY", "healthy"],
+      replay:      ["SIMULATION REPLAY", "healthy"],
+    };
+    const [text, cls] = map[state] || map.replay;
+    el.className = "badge " + cls;
+    el.textContent = text;
+    el.title = detail || "";
+  },
+
+  toReplay(state, detail) {
+    if (this.mode === "live") {
+      addEvent("overall", "warn",
+               `live gateway lost (${detail || state}); falling back to replay`,
+               $("missionClock").textContent || "--:--:--");
+    }
+    this.mode = "replay";
+    this.setBadge(state, detail);
+    if (!LiveFeed.playing) LiveFeed.play();
+  },
+
+  toLive(detail) {
+    if (this.mode !== "live") {
+      addEvent("overall", "ok", "live hardware stream acquired",
+               $("missionClock").textContent || "--:--:--");
+    }
+    this.mode = "live";
+    this.setBadge("live", detail);
+    LiveFeed.pause();          // the gateway is driving now
+  },
+};
+
+/* Render active SAE J1939-73 DM1 diagnostic trouble codes. */
+function renderDTCs(dtcs) {
+  const host = $("dtcChips");
+  if (!host) return;
+  if (!Array.isArray(dtcs) || dtcs.length === 0) {
+    host.innerHTML = '<span class="m-sub">no active DTCs</span>';
+    return;
+  }
+  /* textContent per field, not innerHTML on the payload: DTC descriptions
+   * originate upstream of the browser and must not be able to inject markup. */
+  host.innerHTML = "";
+  dtcs.slice(0, 12).forEach(d => {
+    const chip = document.createElement("span");
+    const lamp = String(d.lamp_status || "").toUpperCase();
+    chip.className = "chip dtc " +
+      (lamp === "RED_STOP" ? "sos" : (lamp === "AMBER_WARNING" ? "degraded" : ""));
+    chip.textContent = `SPN ${d.spn} FMI ${d.fmi}` +
+      (d.oc != null ? ` ×${d.oc}` : "") +
+      (d.description ? ` — ${d.description}` : "");
+    host.appendChild(chip);
+  });
+}
+
+/* One processed frame from the gateway. */
+function onLiveFrame(frame) {
+  LiveSource.toLive(frame.stream_badge);
+  /* The HUD renders the sanitised view -- displaying unclamped raw values
+   * would show the operator readings the FDIR gate has already rejected. */
+  const rec = frame.telemetry_clean || frame.telemetry_raw || {};
+
+  renderDTCs(frame.dtcs_active);
+
+  (frame.sensor_faults || []).forEach(f => {
+    addEvent("overall", "warn",
+             `FDIR ${f.channel}: ${f.fault_type}` +
+             (f.raw_value != null ? ` (raw ${Number(f.raw_value).toFixed(2)})` : ""),
+             $("missionClock").textContent || "--:--:--");
+  });
+
+  /* Health comes from the gateway, already computed. Never synthesise a
+   * number here: if the pipeline could not produce one, say so. */
+  if (!frame.health_available || !frame.subsystem_health) {
+    LiveSource.setBadge("live", "health assessment unavailable at the gateway");
+    return;
+  }
+
+  const health = frame.subsystem_health;
+  const order = DASH.config.part_order;
+  /* RUL comes from the gateway's own LSTM pass when available. The browser
+   * LSTM is for the replay path; running both on live frames would show two
+   * different numbers for the same quantity. */
+  const rulFrac = (frame.prognosis && frame.prognosis.rul_fraction) || null;
+  const probs = (frame.prognosis && frame.prognosis.fault_probs) || null;
+
+  const tstr = missionTimeString(rec, 0);
+  let worst = "ok";
+  for (const pid of order) {
+    if (pid === "overall") continue;
+    const h = Number(health[pid]);
+    const r = rulFrac && rulFrac[pid] != null ? Number(rulFrac[pid]) : NaN;
+    const w = updatePart(pid, rec, h, r);
+    detectParamEvents(pid, rec, h, tstr);
+    if (w === "crit") worst = "crit";
+    else if (w === "warn" && worst !== "crit") worst = "warn";
+  }
+
+  const reg = order.map(pid => (rulFrac && rulFrac[pid] != null)
+                               ? Number(rulFrac[pid]) : NaN);
+  const cls = probs ? DASH.config.class_names.map(n => Number(probs[n] || 0)) : null;
+  if (cls) { DASH.lastCls = cls; detectAiEvent(cls, tstr); }
+  DASH.lastReg = reg;
+  updateOverall(rec, reg, cls, Number(health.overall));
+  updateModal();
+
+  $("missionClock").textContent = tstr;
+  $("cycleInfo").textContent =
+    `gateway · ${LiveSocket.frameCount} frames · ` +
+    `FDIR ${Number(frame.gate_ms || 0).toFixed(2)} ms` +
+    (frame.inference_available ? "" : " · inference offline");
 }
 
 /* ---------------- init ---------------- */
@@ -542,6 +730,7 @@ async function init() {
   $("injectedFaults").innerHTML = (LiveFeed.stream.meta.faults || []).map(f =>
     `<span class="chip">&#9889; ${f.replace(/_/g, " ")}</span>`).join("");
 
+  renderProvenance(LiveFeed.stream);
   $("modelInfo").textContent =
     `LSTM · ${model.H} hidden units · input window ${config.window}×${config.input_features.length} · ` +
     `RUL cap ${config.rul_cap_steps} steps · trained offline on physics-simulated scenarios, inference runs live in-browser`;
@@ -557,6 +746,22 @@ async function init() {
       b.classList.add("active");
     };
   });
+  document.querySelectorAll(".stream-btn").forEach(b => {
+    b.onclick = () => {
+      const streamId = b.dataset.stream;
+      LiveFeed.switchStream(streamId, (newStream) => {
+        document.querySelectorAll(".stream-btn").forEach(x => x.classList.remove("active"));
+        b.classList.add("active");
+        onCycleWrap(0);
+        const name = newStream.meta ? newStream.meta.name : (newStream.mission_name || streamId);
+        $("missionName").textContent = name.replace(/_/g, " ");
+        renderProvenance(newStream);
+        const faults = newStream.meta ? (newStream.meta.faults || []) : [];
+        $("injectedFaults").innerHTML = faults.map(f =>
+          `<span class="chip">&#9889; ${f.replace(/_/g, " ")}</span>`).join("");
+      });
+    };
+  });
   $("btnCloseModal").onclick = closeModule;
   $("modalBackdrop").onclick = closeModule;
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeModule(); });
@@ -564,6 +769,16 @@ async function init() {
   LiveFeed.onRecord(onFrame);
   LiveFeed.onCycle(onCycleWrap);
   LiveFeed.play();
+  LiveSource.setBadge("replay", "recorded mission");
+
+  /* Try the gateway. Everything above already works without it, so a failed
+   * connection degrades to replay rather than breaking the HUD. */
+  LiveSocket.onState((state, detail) => {
+    if (state === "live") return;              // handled in onLiveFrame
+    LiveSource.toReplay(state, detail);
+  });
+  LiveSocket.onFrame(onLiveFrame);
+  LiveSocket.connect();
 }
 
 init();

@@ -39,13 +39,14 @@ SENSOR_COLUMNS = [
     "time", "step", "rpm", "load", "terrain",
     "coolant_temp", "coolant_rtd_ohm", "exhaust_temp", "exhaust_thermocouple_v",
     "exhaust_pressure", "exhaust_mass_flow",
-    "lambda", "exhaust_o2_pct", "oil_pressure", "oil_temp", "oil_viscosity",
+    "lambda", "lambda_residual", "exhaust_o2_pct", "oil_pressure", "oil_temp", "oil_viscosity",
     "oil_flow", "debris_cumulative", "debris_rate", "debris_particles",
-    "shaft_torque", "shaft_shear_stress", "shaft_shear_strain",
-    "mech_power", "shaft_omega", "fuel_level", "fuel_volume",
+    "shaft_torque", "sprocket_torque", "driveline_efficiency",
+    "shaft_shear_stress", "shaft_shear_strain",
+    "mech_power", "delivered_power", "shaft_omega", "fuel_level", "fuel_volume",
     "oil_level", "coolant_level", "fuel_capacitance_pf", "hyd_pressure",
     "hyd_flow", "hyd_force", "hyd_power", "hyd_leak_flow",
-    "susp_load_kN", "susp_stress_MPa",
+    "susp_load_kN", "susp_stress_MPa", "susp_compliance",
     "susp_strain_ue", "susp_dR_ohm", "torsion_torque", "torsion_twist_deg",
     "torsion_shear_MPa",
     "torsion_cumulative_twist", "shock_a_rms_g", "shock_peak_g", "shock_energy",
@@ -88,13 +89,35 @@ class TankSimulator:
     def __init__(self, cfg: TankConfig | None = None,
                  faults: FaultManager | None = None,
                  mission: list[MissionStep] | None = None,
-                 seed: int | None = None):
+                 seed: int | None = None,
+                 sensor_seed: int | None = None):
+        """
+        ``seed`` drives the *fault* process (severity jitter, onset noise).
+        ``sensor_seed`` drives the *measurement* process (transducer noise) and
+        defaults to ``seed``.
+
+        The two streams are deliberately separate.  They used to share one
+        Generator, which meant (a) the number of draws consumed per step
+        depended on how many fault profiles were registered, so injecting a
+        fault perturbed the noise realisation of every unrelated channel, and
+        (b) there was no way to hold a fault trajectory fixed while re-rolling
+        sensor noise -- which is exactly the experiment that proves a channel
+        is a *measurement* and not a restatement of the injected parameter.
+        ``tests/test_leakage.py`` relies on being able to run it.
+        """
         self.cfg = cfg or TankConfig()
         seed = seed if seed is not None else self.cfg.noise_seed
-        self.rng = np.random.default_rng(seed)
-        self.faults = faults or FaultManager(self.rng)
+        self._seed = seed
+        self._sensor_seed = sensor_seed if sensor_seed is not None else seed
+        self.fault_rng = np.random.default_rng(self._seed)
+        self.rng = np.random.default_rng(self._sensor_seed)
+        self.faults = faults or FaultManager(self.fault_rng)
+        self.faults.rng = self.fault_rng
         self.mission = mission or default_mission(self.cfg)
+        self._build_sensors()
 
+    def _build_sensors(self) -> None:
+        """(Re)create every sensor, discarding accumulated state."""
         self.thermal = ThermalSystem(self.cfg)
         self.vib = VibrationSensor(self.cfg, self.rng)
         self.eng_temp = EngineTemperatureSensor(self.cfg, self.rng)
@@ -111,6 +134,21 @@ class TankSimulator:
         self.acoustic = AcousticSensor(self.cfg, self.rng)
         self.ae = AcousticEmissionSensor(self.cfg, self.rng)
 
+    def reset(self) -> None:
+        """Return the simulator to its initial condition.
+
+        Several sensors accumulate state across a mission (thermal masses, fluid
+        levels, the debris counter, cumulative torsion twist).  Without this,
+        a second ``run()`` continues from wherever the first ended -- the
+        pattern documented in the README (``sim.run()`` followed by
+        ``write_dataset(sim, ...)``, which runs it again) produced a dataset
+        starting at 62% fuel with 900 debris particles already counted.
+        """
+        self.fault_rng = np.random.default_rng(self._seed)
+        self.rng = np.random.default_rng(self._sensor_seed)
+        self.faults.rng = self.fault_rng
+        self._build_sensors()
+
     def fault_columns(self) -> list[str]:
         return [FAULT_COLUMN_PREFIX + name for name in self.faults.labels()]
 
@@ -120,6 +158,7 @@ class TankSimulator:
     def run(self) -> list[dict[str, float]]:
         """Simulate the full mission and return one record per time step."""
         cfg = self.cfg
+        self.reset()          # a run always starts from the initial condition
         records: list[dict[str, float]] = []
         t = 0.0
         step = 0
@@ -137,9 +176,17 @@ class TankSimulator:
     def _advance(self, mission: MissionStep, params: dict) -> None:
         cfg = self.cfg
         rpm_frac = mission.rpm / cfg.max_speed_rpm
+        # EGT depends on excess air, so the combustion state has to reach the
+        # thermal model. `air_mult`/`fuel_mult` are the injector-fault
+        # parameters; a fuelling fault must raise EGT, which it cannot do if
+        # the thermal model never sees lambda.
+        lam_nominal = cfg.lambda_idle - (cfg.lambda_idle - cfg.lambda_rated) * min(
+            max(mission.load, 0.0), 1.0)
+        lam = lam_nominal * params["air_mult"] / max(params["fuel_mult"], 1e-6)
         self.thermal.step(mission.load * rpm_frac, mission.rpm,
                           cooling_eff=params["cooling_eff"],
-                          load_multiplier=params["load_multiplier"])
+                          load_multiplier=params["load_multiplier"],
+                          lambda_actual=lam)
         if params["oil_temp_bias"]:
             self.thermal.T_oil += params["oil_temp_bias"] * cfg.dt
 
@@ -157,7 +204,10 @@ class TankSimulator:
         debris = self.debris.read(params["debris_severity"], cfg.dt)
 
         rpm_frac = rpm / cfg.max_speed_rpm
-        power = cfg.max_fuel_energy_rate * load * rpm_frac / 1000.0  # kW
+        # Shaft power, not fuel heat release: without the brake thermal
+        # efficiency term this reported ~2.4 MW (~3,200 hp) for a 58 t MBT.
+        power = (cfg.max_fuel_energy_rate * cfg.brake_thermal_efficiency
+                 * load * rpm_frac / 1000.0)  # kW
         tor = self.torque.read(rpm, power * 1000.0,
                                efficiency=params["efficiency"])
         exh = self.exhaust.read(self.thermal, rpm, load,
@@ -165,7 +215,7 @@ class TankSimulator:
                                 air_mult=params["air_mult"],
                                 restriction=params["restriction"])
         lvl = self.level.read(load, cfg.dt,
-                              fuel_leak=params["oil_leak"] * 0.0,
+                              fuel_leak=params["fuel_leak"],
                               oil_leak=params["oil_leak"],
                               coolant_leak=params["coolant_leak"])
         hyd = self.hyd.read(load, pump_eff=params["pump_eff"],
@@ -177,7 +227,7 @@ class TankSimulator:
         torbar = self.torsion.read(abs(tor["shaft_torque"]),
                                    stiffness_mult=params["stiffness_mult"])
         shock = self.shock.features(terrain)
-        acous = self.acoustic.features(rpm)
+        acous = self.acoustic.features(rpm, mech_severity=params["vib_severity"])
         ae = self.ae.read(params["ae_severity"], cfg.dt)
         vib = self.vib.features(rpm, params["vib_severity"],
                                 params.get("vib_defect", "none"))

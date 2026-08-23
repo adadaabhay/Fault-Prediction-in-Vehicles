@@ -74,20 +74,30 @@ class LSTMModel:
         return w_reg * mse + w_cls * ce
 
     # ------------------------------------------------------------------
-    def backward(self, cache: dict, y_reg: np.ndarray, y_cls: int) -> dict:
-        """BPTT from the final-step outputs (sequence-to-one)."""
+    def backward(self, cache: dict, y_reg: np.ndarray, y_cls: int,
+                 w_reg: float = 2.0, w_cls: float = 0.4) -> dict:
+        """BPTT from the final-step outputs (sequence-to-one).
+
+        ``w_reg``/``w_cls`` must match the values passed to :meth:`loss`.  They
+        used to be absent here, so the gradients corresponded to a different
+        objective than the one being reported -- the regression head was
+        effectively over-weighted 2x at R=8 and ``--w-cls`` did nothing at all.
+        """
         T = cache["X"].shape[0]
         g = {}
         for k in self.p:
             g[k] = np.zeros_like(self.p[k])
 
-        d_reg = (cache["reg"] - y_reg) * cache["reg"] * (1 - cache["reg"])
+        # d/d_reg of w_reg * mean((reg - y)^2) is 2*w_reg/R * (reg - y).
+        reg_scale = 2.0 * w_reg / max(self.R, 1)
+        d_reg = reg_scale * (cache["reg"] - y_reg) * cache["reg"] * (1 - cache["reg"])
         g["Wy"] += np.outer(cache["h_final"], d_reg)
         g["by"] += d_reg
 
         soft = cache["cls"]
         d_cls = soft.copy()
         d_cls[y_cls] -= 1.0
+        d_cls = d_cls * w_cls
         g["Wcls"] += np.outer(cache["h_final"], d_cls)
         g["bcls"] += d_cls
 
@@ -113,7 +123,7 @@ class LSTMModel:
             g["bo"] += d_o * o * (1 - o)
 
             g["Uc"] += np.outer(h_prev, d_c_t * (1 - c_t ** 2))
-            g["Wc_"] = np.outer(x, d_c_t * (1 - c_t ** 2))
+            g["Wc"] += np.outer(x, d_c_t * (1 - c_t ** 2))
             g["bc"] += d_c_t * (1 - c_t ** 2)
 
             g["Ui"] += np.outer(h_prev, d_i * i * (1 - i))
@@ -124,15 +134,11 @@ class LSTMModel:
             g["Wf"] += np.outer(x, d_f * f * (1 - f))
             g["bf"] += d_f * f * (1 - f)
 
-            # Merge Wc_ (cell-input matrix) into the Wc slot.
-            g["Wc"] += g.pop("Wc_")
-            g["bc"] += 0
-
             d_h = (d_o * o * (1 - o)) @ self.p["Uo"].T \
                 + (d_c_t * (1 - c_t ** 2)) @ self.p["Uc"].T \
                 + (d_i * i * (1 - i)) @ self.p["Ui"].T \
                 + (d_f * f * (1 - f)) @ self.p["Uf"].T
-            d_c = d_f * f
+            d_c = d_c * f
         return g
 
     # ------------------------------------------------------------------
@@ -211,9 +217,15 @@ def train(model: LSTMModel, train_sets: list[dict], val_sets: list[dict],
                 cache = model.forward(xs[i])
                 batch_loss += model.loss(cache, ys[i], int(ls[i]),
                                          w_reg=w_reg, w_cls=w_cls)
-                gi = model.backward(cache, ys[i], int(ls[i]))
+                gi = model.backward(cache, ys[i], int(ls[i]),
+                                    w_reg=w_reg, w_cls=w_cls)
                 g = gi if g is None else {k: g[k] + gi[k] for k in g}
-            model.clip_grads(g, grad_clip)
+            # Average over the batch so the step size does not scale with
+            # batch length, then clip.  `clip_grads` returns a new dict -- the
+            # previous call discarded it, making clipping a no-op.
+            if len(idx):
+                g = {k: v / len(idx) for k, v in g.items()}
+            g = model.clip_grads(g, grad_clip)
             adam.step(model.p, g)
             for k in model.p:
                 model.p[k] -= effective_lr * weight_decay * model.p[k]

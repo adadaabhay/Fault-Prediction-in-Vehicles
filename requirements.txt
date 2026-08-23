@@ -1,1 +1,12 @@
-numpy>=1.24
+# Simulator + numpy LSTM runtime. Pinned to match the parent build
+# (../requirements.txt) so a model trained here reproduces there -- an
+# unpinned minor bump changes model numerics, and the exported weights in
+# docs/model.json are only meaningful against a known numpy.
+numpy==2.4.6
+
+# --- Test-only ---------------------------------------------------------------
+# tests/test_leakage.py uses a decision tree to assert that no single channel
+# separates its own fault class the way a label would. It skips cleanly if
+# scikit-learn is absent, but CI must have it or that guard silently no-ops.
+scikit-learn==1.9.0
+pytest==9.1.1

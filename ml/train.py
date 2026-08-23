@@ -15,10 +15,35 @@ from pathlib import Path
 import numpy as np
 
 from .lstm import LSTMModel, predict_rul, train
-from .parts import INPUT_FEATURES, PART_ORDER, RUL_CAP_STEPS, PARTS, PART_ORDER as _PO
+from .parts import (INPUT_FEATURES, PART_ORDER, RUL_CAP_STEPS, PARTS,
+                    FAIL_HEALTH)
 from .scenarios import build_dataset, save_demo
+from tank_sim.config import TankConfig
 
 DOCS = Path(__file__).resolve().parent.parent / "docs"
+
+
+def _report(model, sets, verbose: bool = False) -> dict:
+    """Score a list of scenarios. Returns pooled RUL MAE (steps) and accuracy."""
+    abs_err, correct, total = [], 0, 0
+    for s in sets:
+        preds = [predict_rul(model, s["X"][i]) for i in range(len(s["X"]))]
+        rul_pred = np.stack([p[0] for p in preds])
+        cls_pred = np.argmax(np.stack([p[1] for p in preds]), axis=1)
+        err = np.abs(rul_pred - s["Y"])
+        abs_err.append(err)
+        correct += int(np.sum(cls_pred == s["L"]))
+        total += len(s["L"])
+        if verbose:
+            per_part = np.mean(err, axis=0) * RUL_CAP_STEPS
+            parts_str = ", ".join(f"{p}={v:.0f}"
+                                  for p, v in zip(PART_ORDER, per_part))
+            print(f"  {s['name']:<34} RUL MAE={np.mean(err)*RUL_CAP_STEPS:6.1f} "
+                  f"({parts_str})  acc={np.mean(cls_pred == s['L']):.2f}")
+    pooled = np.concatenate(abs_err) if abs_err else np.zeros((1, 1))
+    return {"rul_mae": float(np.mean(pooled) * RUL_CAP_STEPS),
+            "cls_acc": float(correct / max(total, 1)),
+            "n_windows": int(total)}
 
 
 def main() -> None:
@@ -37,7 +62,7 @@ def main() -> None:
 
     print("Generating physics-simulated scenarios ...")
     data = build_dataset(window_samples=256 if args.quick else 512,
-                         sample_rate=500.0,
+                         sample_rate=4000.0,
                          window=args.window, stride=args.stride,
                          demo_steps=args.demo_steps)
     if args.quick:
@@ -47,34 +72,44 @@ def main() -> None:
     model = LSTMModel(D=len(INPUT_FEATURES), H=args.hidden,
                       R=len(PART_ORDER), C=n_classes, seed=0)
 
-    # Shuffle scenario order so the held-out split spans all fault types.
-    rng = np.random.default_rng(11)
-    order = rng.permutation(len(data["per_scenario"]))
-    shuffled = [data["per_scenario"][i] for i in order]
-    n_val = max(1, int(len(shuffled) * 0.18))
-    val_sets = shuffled[-n_val:]
-    train_sets = shuffled[:-n_val]
+    # Grouped three-way split, computed in scenarios.split_suite by
+    # (fault family, duty profile) cell. The previous split shuffled scenarios
+    # at random, which put four near-identical siblings of every held-out
+    # scenario into training, and had no test set at all -- `val_sets` was used
+    # both to select `best_params` and to report "held-out" performance.
+    per = data["per_scenario"]
+    splits = data["splits"]
+    train_sets = [per[i] for i in splits["train"]]
+    val_sets = [per[i] for i in splits["val"]]
+    test_sets = [per[i] for i in splits["test"]]
+    if not val_sets or not test_sets:
+        raise SystemExit("split produced an empty val or test set")
     print(f"scenarios: train={len(train_sets)} val={len(val_sets)} "
-          f"windows: train={sum(len(s['X']) for s in train_sets)}")
+          f"test={len(test_sets)}")
+    print(f"windows:   train={sum(len(s['X']) for s in train_sets)} "
+          f"val={sum(len(s['X']) for s in val_sets)} "
+          f"test={sum(len(s['X']) for s in test_sets)}")
 
     print("Training LSTM (RUL regression + fault classification) ...")
     train(model, train_sets, val_sets, epochs=args.epochs,
           w_reg=args.w_reg, w_cls=args.w_cls)
 
-    # ---- evaluation on held-out scenarios --------------------------------
-    print("\nEvaluation (held-out scenarios):")
-    for s in val_sets:
-        y_true = s["Y"]
-        rul_pred = np.stack([predict_rul(model, s["X"][i])[0]
-                             for i in range(len(s["X"]))])
-        mae = np.mean(np.abs(rul_pred - y_true)) * RUL_CAP_STEPS
-        per_part = np.mean(np.abs(rul_pred - y_true), axis=0) * RUL_CAP_STEPS
-        cls_pred = np.argmax(np.stack([predict_rul(model, s["X"][i])[1]
-                                       for i in range(len(s["X"]))]), axis=1)
-        acc = float(np.mean(cls_pred == s["L"]))
-        parts_str = ", ".join(f"{p}={v:.0f}" for p, v in zip(PART_ORDER, per_part))
-        print(f"  {s['name']:<28} RUL MAE={mae:6.1f} steps  "
-              f"({parts_str})  cls_acc={acc:.2f}")
+    # ---- evaluation --------------------------------------------------------
+    # `val_sets` selected the checkpoint, so numbers on it are a training
+    # statistic, not an estimate of generalisation. `test_sets` is scored
+    # exactly once, here, after selection has finished. Only the test figure
+    # may be quoted. Previously there was no test set: the same `val_sets` was
+    # used to pick `best_params` and then printed under the heading
+    # "Evaluation (held-out scenarios)".
+    print("\nVALIDATION (drove checkpoint selection -- NOT generalisation):")
+    val_summary = _report(model, val_sets)
+    print(f"  val  RUL MAE={val_summary['rul_mae']:.1f} steps  "
+          f"cls_acc={val_summary['cls_acc']:.3f}")
+
+    print("\nTEST (held-out (fault x duty-profile) cells, scored once):")
+    test_summary = _report(model, test_sets, verbose=True)
+    print(f"  test RUL MAE={test_summary['rul_mae']:.1f} steps  "
+          f"cls_acc={test_summary['cls_acc']:.3f}")
 
     # ---- export ----------------------------------------------------------
     DOCS.mkdir(exist_ok=True)
@@ -87,10 +122,21 @@ def main() -> None:
         "scaler": data["scaler"],
         "class_names": data["class_names"],
         "rul_cap_steps": RUL_CAP_STEPS,
-        "fail_health": 25.0,
+        "fail_health": FAIL_HEALTH,
         "window": args.window,
-        "dt": 0.05,
+        "dt": TankConfig().dt,
         "model": {"hidden": args.hidden},
+        # Recorded so the dashboard can state what the model actually scored
+        # and on what, rather than implying the validation number is a
+        # generalisation estimate.
+        "evaluation": {
+            "val": val_summary,
+            "test": test_summary,
+            "val_groups": sorted({s["group"] for s in val_sets}),
+            "test_groups": sorted({s["group"] for s in test_sets}),
+            "note": "val drove checkpoint selection; test was scored once "
+                    "after selection. Quote test only.",
+        },
     }
     with open(DOCS / "config.json", "w") as fh:
         json.dump(config, fh)

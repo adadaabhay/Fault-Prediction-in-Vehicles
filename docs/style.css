@@ -91,9 +91,16 @@ body {
   border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: .95rem;
 }
 .ctl-btn:hover, .speed-btn:hover { border-color: var(--cyan); }
-.speed-btn.active { background: var(--cyan); color: #03131a; font-weight: 700; }
 .speed-group { display: flex; align-items: center; gap: 6px; }
 .speed-group label { color: var(--dim); font-size: .65rem; letter-spacing: 2px; margin-right: 4px; }
+.stream-group { display: flex; align-items: center; gap: 6px; }
+.stream-group label { color: var(--dim); font-size: .65rem; letter-spacing: 2px; margin-right: 4px; }
+.stream-btn {
+  background: #121e1a; color: var(--txt); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 11px; cursor: pointer; font-size: .78rem; transition: all .2s;
+}
+.stream-btn:hover { border-color: var(--cyan); color: #fff; }
+.stream-btn.active { background: rgba(61,214,240,.2); border-color: var(--cyan); color: var(--cyan); font-weight: 700; text-shadow: 0 0 8px rgba(61,214,240,.6); }
 .live-tag {
   color: var(--red); font-size: .7rem; font-weight: 700; letter-spacing: 2px;
   border: 1px solid var(--red); border-radius: 12px; padding: 4px 10px;
@@ -256,3 +263,40 @@ footer.credits { justify-content: center; border-top: none; margin-top: 0; paddi
   .modal-body { grid-template-columns: 1fr; }
   .brand { min-width: 0; }
 }
+
+
+/* Channels a stream does not actually carry: shown as unavailable rather than
+   rendering a schema placeholder as if it were a measurement. */
+.p-val.synthetic {
+  color: #5d6b63;
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.stream-provenance {
+  font-size: 11px;
+  color: #7fa08d;
+  letter-spacing: 0.02em;
+  margin-left: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 46ch;
+}
+
+/* --- Active DTC bar (SAE J1939-73 DM1) ------------------------------------ */
+.dtc-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.chip.dtc {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.chip.dtc.degraded { border-color: #d8a11a; color: #f0c651; }
+.chip.dtc.sos      { border-color: #c0392b; color: #ff6b5a; }

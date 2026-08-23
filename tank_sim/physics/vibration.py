@@ -55,11 +55,11 @@ def rms(signal: np.ndarray) -> float:
 
 
 def kurtosis(signal: np.ndarray) -> float:
-    """Normalised fourth-moment excess-kurtosis of a signal.
-
-    High kurtosis indicates impulsive events associated with bearing or
-    gear damage.
-    """
+    """Normalised fourth-moment Pearson kurtosis of a signal (equals 3.0 for Gaussian).
+ 
+     High kurtosis indicates impulsive events associated with bearing or
+     gear damage.
+     """
     mu = np.mean(signal)
     sigma2 = np.mean((signal - mu) ** 2)
     if sigma2 <= 0.0:
@@ -95,10 +95,18 @@ class VibrationSensor:
         if defect_type in ("bearing_outer", "bearing_inner", "gear_wear"):
             amp = (1.0 + fault_severity) * cfg.shaft_amp_base
             if defect_type == "gear_wear":
+                # Gear-mesh harmonics plus shaft-rate sidebands at f_GMF +/- f_r.
+                # Sideband energy around the mesh frequency is the standard
+                # discriminator for tooth pitting/spalling, so it has to be
+                # present for the diagnostic to have anything to key on.
                 for k in range(1, 5):
-                    signal += amp * 0.25 / k * np.sin(
+                    signal += amp * 0.9 / k * np.sin(
                         2.0 * np.pi * freq["f_gmf"] * k * t
                     )
+                    for sb in (-1, 1):
+                        f_sb = freq["f_gmf"] * k + sb * freq["f_r"]
+                        if f_sb > 0:
+                            signal += amp * 0.45 / k * np.sin(2.0 * np.pi * f_sb * t)
             else:
                 f_def = freq["BPFO"] if defect_type == "bearing_outer" else freq["BPFI"]
                 signal += amp * np.sin(2.0 * np.pi * f_def * t)
@@ -110,10 +118,15 @@ class VibrationSensor:
                     impulses[idx] = amp * 6.0 * fault_severity * decay
                 signal += impulses
 
-        signal *= -((2.0 * np.pi * freq["f_r"]) ** 2) / max(
-            (2.0 * np.pi * freq["f_r"]) ** 2, 1.0
-        )
-        signal *= cfg.shaft_amp_base / max(np.std(signal), 1e-9) * cfg.shaft_amp_base
+        # The tone amplitudes above are already accelerations (cfg.shaft_amp_base
+        # is m/s^2), so no d^2x/dt^2 conversion is applied here.  Two lines used
+        # to sit at this point: a sign flip that evaluated to exactly -1.0 for
+        # any realistic shaft speed, and a renormalisation pinning the standard
+        # deviation to shaft_amp_base^2.  Together they erased fault severity
+        # from the amplitude -- vib_rms moved only 0.365 -> 0.396 across the
+        # entire severity range, making the configured warn/crit thresholds
+        # (0.75 / 1.2 m/s^2) unreachable.  Amplitude must stay proportional to
+        # the defect energy built above.
         signal += self.rng.normal(0.0, cfg.vibration_noise, n)
         return signal
 
