@@ -1,8 +1,13 @@
 name: Deploy dashboard to GitHub Pages
 
+# Deploys from any active branch rather than one hardcoded name.
+# This pinned `Feat/Sheena` while development moved elsewhere, so the
+# published dashboard served code that no longer existed in the working
+# tree -- the deployed artifact and the reviewed artifact were different
+# things, with nothing on the page to indicate it.
 on:
   push:
-    branches: [Feat/Sheena]
+    branches: [main, master, Feat/Sheena, fix/phm-audit-remediation]
   workflow_dispatch:
 
 permissions:
@@ -22,6 +27,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify published artifacts are self-consistent
+        run: python tools_check_artifacts.py
+
+      - name: Check dashboard JavaScript syntax
+        run: for f in docs/*.js; do node --check "$f"; done
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

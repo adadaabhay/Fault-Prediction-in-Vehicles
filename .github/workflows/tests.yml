@@ -26,6 +26,21 @@ jobs:
       - name: Run test suite
         run: python -m pytest tests/ -v
 
+      - name: Fail if the label-leakage guards were skipped
+        run: |
+          # test_leakage.py skips its classifier assertions without
+          # scikit-learn. A skipped leakage gate is indistinguishable from a
+          # passing one in the summary line, and leakage is the defect that
+          # invalidated every number this project reported.
+          python -m pytest tests/test_leakage.py -q -rs 2>&1 | tee leak.txt
+          if grep -qi "skipped" leak.txt; then
+            echo "::error::label-leakage suite skipped -- install scikit-learn"
+            exit 1
+          fi
+
+      - name: Verify published artifacts are self-consistent
+        run: python tools_check_artifacts.py
+
       - name: Check JS syntax
         run: |
           for f in docs/*.js; do
