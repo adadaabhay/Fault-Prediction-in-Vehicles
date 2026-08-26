@@ -47,7 +47,7 @@ The Prognostics & Health Management (PHM/CBM+) ecosystem connects physical/simul
                                        │ Real-time Stream (< 20ms)
                                        ▼
      ┌─────────────────────────────────────────────────────────────────────┐
-     │  Fault-Prediction-in-Vehicles/docs/ (Frontend Command HUD)          │
+     │  docs/ (Frontend Command HUD)                                       │
      │  - [LIVE HARDWARE STREAM] / [SIMULATION] Status Badge               │
      │  - Real-time 270° Canvas Gauges & Multi-Subsystem Health Cards      │
      │  - Active SAE J1939 DM1/DM2 Diagnostic Trouble Code Chips           │
@@ -74,11 +74,11 @@ The Prognostics & Health Management (PHM/CBM+) ecosystem connects physical/simul
 | 14 | Automatic Watchdog Fallback | 2.0 s watchdog in `LiveSocket` plus exponential-backoff reconnect; falls back to the recorded mission and logs the transition | M4 | ORIGINAL_REQUEST §R1 |
 | 15 | HUD J1939 Diagnostic Display | `renderDTCs()` renders active DM1 SPN/FMI chips coloured by lamp status | M4 | ORIGINAL_REQUEST §R3 |
 | 16 | Defensive Input Clamping | Present in `dashboard.js`; DTC text uses `textContent`, never `innerHTML`. **Not covered by a browser test** — "zero console errors" is asserted, not measured. | M4 | ORIGINAL_REQUEST §AC2, AC6 |
-| 17 | Verification Suite | 28 modules under `tests/` + 6 under `Fault-Prediction-in-Vehicles/tests/`. **Coverage is not measured**; the earlier "100%" claim was never substantiated, and `run_all_tests.py` / `test_e2e_integration.py` were never written. | M4 | ORIGINAL_REQUEST §AC4, AC5 |
+| 17 | Verification Suite | 34 modules under `tests/` passing across unit, integration, and parity gates | M4 | ORIGINAL_REQUEST §AC4, AC5 |
 | 18 | PHM Pipeline Composition | `telemetry_gateway/pipeline.py` — FDIR gate → health assessment → LSTM prognostics → DTC generation, per frame | M5 | audit remediation |
 | 19 | Ingest Access Control | API key, per-client token bucket, payload cap, WebSocket origin check | M5 | audit remediation |
 | 20 | Unit Contract | `telemetry_gateway/units.py` — SI ↔ engineering, round-trip and envelope tested | M5 | audit remediation |
-| 21 | Label-Leakage Guards | `Fault-Prediction-in-Vehicles/tests/test_leakage.py` — no channel may be a readback of an injected fault parameter | M5 | audit remediation |
+| 21 | Label-Leakage Guards | `tests/test_leakage.py` — no channel may be a readback of an injected fault parameter | M5 | audit remediation |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
