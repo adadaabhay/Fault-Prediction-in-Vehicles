@@ -8,12 +8,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Fault-Prediction-in-Vehicles"))
 
-from tank_sim.cvrde.cvrde_config import CVRDETankConfig
-from tank_sim.cvrde.powerpack import CVRDEPowerpack
-from tank_sim.cvrde.hydrogas_suspension import CVRDEHydrogasUnit
-from tank_sim.cvrde.gun_control import CVRDEGunControlSystem
-from tank_sim.cvrde.auxiliary_nbc import CVRDEAuxiliaryNBC
-from tank_sim.cvrde.cvrde_generator import CVRDEMissionGenerator
+from sim.cvrde.cvrde_config import CVRDETankConfig
+from sim.cvrde.powerpack import CVRDEPowerpack
+from sim.cvrde.hydrogas_suspension import CVRDEHydrogasUnit
+from sim.cvrde.gun_control import CVRDEGunControlSystem
+from sim.cvrde.auxiliary_nbc import CVRDEAuxiliaryNBC
+from sim.cvrde.cvrde_generator import CVRDEMissionGenerator
 
 
 class TestCVRDESubsystems(unittest.TestCase):

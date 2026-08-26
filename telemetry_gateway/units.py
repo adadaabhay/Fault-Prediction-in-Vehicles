@@ -4,7 +4,7 @@ The problem this solves
 -----------------------
 There were two unit conventions in the system and no contract between them:
 
-* `tank_sim` is SI-native. `oil_pressure` is Pa (5.3e5), `hyd_pressure` is Pa
+* `sim` is SI-native. `oil_pressure` is Pa (5.3e5), `hyd_pressure` is Pa
   (2.1e7), levels are fractions (0.89).
 * `sensor_plausibility.SENSOR_LIMITS_CATALOG` and the J1939 SPN encodings are
   engineering-native. `oil_pressure` is bar with envelope [0, 15],

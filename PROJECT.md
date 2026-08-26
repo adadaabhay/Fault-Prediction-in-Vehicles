@@ -165,7 +165,7 @@ Vnest/
 │   │   ├── parts.py
 │   │   ├── scenarios.py                       # suite, duty profiles, grouped 3-way split
 │   │   └── train.py
-│   └── tank_sim/                              # CVRDE Arjun Mk-1A & MBT vehicle models
+│   └── sim/                              # CVRDE Arjun Mk-1A & MBT vehicle models
 ├── c_engine/                                  # MISRA-C99 Edge Inference Engine
 │   ├── tank_pdm_infer.h
 │   └── tank_pdm_infer.c

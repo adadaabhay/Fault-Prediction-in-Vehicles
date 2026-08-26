@@ -19,7 +19,7 @@ from .constants import DEFAULT_W_CLS, DEFAULT_W_REG
 from .parts import (INPUT_FEATURES, PART_ORDER, RUL_CAP_STEPS, PARTS,
                     FAIL_HEALTH)
 from .scenarios import build_dataset, save_demo
-from tank_sim.config import TankConfig
+from sim.config import TankConfig
 
 DOCS = Path(__file__).resolve().parent.parent / "docs"
 
@@ -67,17 +67,15 @@ def main() -> None:
                          window=args.window, stride=args.stride,
                          demo_steps=args.demo_steps)
     if args.quick:
+        # Instead of breaking splits by just slicing per_scenario, regenerate trivial splits
+        # for the sliced 4-element list so indices remain valid.
         data["per_scenario"] = data["per_scenario"][:4]
+        data["splits"] = {"train": [0, 1], "val": [2], "test": [3]}
 
     n_classes = len(data["class_names"])
     model = LSTMModel(D=len(INPUT_FEATURES), H=args.hidden,
                       R=len(PART_ORDER), C=n_classes, seed=0)
 
-    # Grouped three-way split, computed in scenarios.split_suite by
-    # (fault family, duty profile) cell. The previous split shuffled scenarios
-    # at random, which put four near-identical siblings of every held-out
-    # scenario into training, and had no test set at all -- `val_sets` was used
-    # both to select `best_params` and to report "held-out" performance.
     per = data["per_scenario"]
     splits = data["splits"]
     train_sets = [per[i] for i in splits["train"]]

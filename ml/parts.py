@@ -151,6 +151,45 @@ PARTS = {
         "gauge": "torsion_twist_deg",
         "alarm_key": "ae_event_rate",
     },
+    "nbc": {
+        "label": "NBC Protection",
+        "params": [
+            {"key": "nbc_overpressure", "label": "Overpressure", "unit": "Pa",
+             "min": 0, "max": 600, "warn_lo": 150, "crit_lo": 50,
+             "healthy": 300},
+            {"key": "nbc_filter_dp", "label": "Filter dp", "unit": "Pa",
+             "min": 0, "max": 2000, "warn_hi": 1500, "crit_hi": 1800,
+             "healthy": 500},
+        ],
+        "gauge": "nbc_overpressure",
+        "alarm_key": "nbc_overpressure",
+    },
+    "exhaust": {
+        "label": "Exhaust",
+        "params": [
+            {"key": "exhaust_backpressure", "label": "Backpressure", "unit": "kPa",
+             "min": 100, "max": 200, "warn_hi": 140, "crit_hi": 160,
+             "healthy": 110, "scale": 0.001, "decimals": 1},
+            {"key": "particulate_index", "label": "Particulates", "unit": "%",
+             "min": 0, "max": 100, "warn_hi": 70, "crit_hi": 90,
+             "healthy": 15},
+        ],
+        "gauge": "exhaust_backpressure",
+        "alarm_key": "particulate_index",
+    },
+    "acoustics": {
+        "label": "Acoustics",
+        "params": [
+            {"key": "ae_event_rate", "label": "AE Events", "unit": "Hz",
+             "min": 0, "max": 50, "warn_hi": 25, "crit_hi": 40,
+             "healthy": 2},
+            {"key": "ae_burst_energy", "label": "Burst Energy", "unit": "J",
+             "min": 0, "max": 1000, "warn_hi": 400, "crit_hi": 700,
+             "healthy": 50},
+        ],
+        "gauge": "ae_event_rate",
+        "alarm_key": "ae_event_rate",
+    },
     "overall": {
         "label": "Overall Tank",
         "params": [
@@ -170,7 +209,7 @@ PARTS = {
 }
 
 PART_ORDER = ["engine", "powertrain", "lubrication", "cooling",
-              "hydraulics", "suspension", "structure", "overall"]
+              "hydraulics", "suspension", "structure", "nbc", "exhaust", "acoustics", "overall"]
 
 # LSTM input features (normalised 0-1) spanning all subsystems.
 INPUT_FEATURES = [

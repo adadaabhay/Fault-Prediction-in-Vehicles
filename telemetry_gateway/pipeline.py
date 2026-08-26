@@ -173,7 +173,7 @@ class PHMPipeline:
         with self._lock:
             # --- Block 1b: unit normalisation -------------------------------
             # The FDIR catalog, the J1939 SPN scalings and the HUD are all
-            # engineering-native (bar, %); tank_sim is SI-native (Pa,
+            # engineering-native (bar, %); sim is SI-native (Pa,
             # fraction). Without this the pressures tripped a spurious
             # SHORT_CIRCUIT every frame and levels were silently read as
             # ~0.9% full. See units.py.

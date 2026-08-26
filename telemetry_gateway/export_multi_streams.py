@@ -326,7 +326,7 @@ def export_all_streams(out_path: str | None = None):
     print(f"Exporting multi-subsystem telemetry streams to {out_path}...")
     cfg = _load_config()
 
-    # Streams produced elsewhere (e.g. tank_sim.cvrde.cvrde_generator) must
+    # Streams produced elsewhere (e.g. sim.cvrde.cvrde_generator) must
     # survive a re-export; this exporter owns only the ids it builds below.
     preserved, preserved_meta = {}, []
     if os.path.exists(out_path):

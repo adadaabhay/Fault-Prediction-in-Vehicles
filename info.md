@@ -298,7 +298,7 @@ Legend:
 
 | Subsystem | Status | Monitored Failure Modes & Governing Physics | Applicable Datasets | Provenance | Priority | Source Link & Scope |
 | :--- | :---: | :--- | :--- | :---: | :---: | :--- |
-| **15.1 Composite Armor** | `CONFIDENTIAL / CLASSIFIED` | Subsurface ceramic fracture, delamination under repeated non-penetrating blast.<br>Acoustic Emission elastic wave energy | **In-house `acoustics.py` (AE)** | 🔴 Synthetic Sim | **P4 (Sim)** | • [AE Module in `acoustics.py`](file:///c:/Users/abhay/Documents/Vnest/Fault-Prediction-in-Vehicles/tank_sim/physics/acoustics.py): Micro-crack acoustic emission event rate and energy ($\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$). |
+| **15.1 Composite Armor** | `CONFIDENTIAL / CLASSIFIED` | Subsurface ceramic fracture, delamination under repeated non-penetrating blast.<br>Acoustic Emission elastic wave energy | **In-house `acoustics.py` (AE)** | 🔴 Synthetic Sim | **P4 (Sim)** | • [AE Module in `acoustics.py`](file:///c:/Users/abhay/Documents/Vnest/Fault-Prediction-in-Vehicles/sim/physics/acoustics.py): Micro-crack acoustic emission event rate and energy ($\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$). |
 | **15.2 ERA Cassettes** | `CONFIDENTIAL / CLASSIFIED` | Explosive cassette detachment, environmental casing seal breach.<br>Vibration resonance shift | **In-house `vibration.py`** | 🔴 Synthetic Sim | **P4 (Sim)** | • Modeled via structural natural frequency shifts ($\omega_n = \sqrt{\frac{k}{m}}$). |
 
 ---
@@ -344,7 +344,7 @@ Legend:
 
 | Subsystem | Status | Monitored Failure Modes & Governing Physics | Applicable Datasets | Provenance | Priority | Source Link & Scope |
 | :--- | :---: | :--- | :--- | :---: | :---: | :--- |
-| **19.1 Sensor Validation** | `OPEN PROXY PROCURED` | Transducer detachment, wiring harness short/open, spurious signal drift.<br>Multi-sensor cross-channel correlation | **All Catalogue Datasets**<br>**In-house `tank_sim/`** | Multi-Source<br>🔴 Synthetic Sim | **P1 (Core)**<br>**P1 (Core)** | • PNN cross-checks vibration, temperature, and oil debris before triggering mechanical failure alerts. |
+| **19.1 Sensor Validation** | `OPEN PROXY PROCURED` | Transducer detachment, wiring harness short/open, spurious signal drift.<br>Multi-sensor cross-channel correlation | **All Catalogue Datasets**<br>**In-house `sim/`** | Multi-Source<br>🔴 Synthetic Sim | **P1 (Core)**<br>**P1 (Core)** | • PNN cross-checks vibration, temperature, and oil debris before triggering mechanical failure alerts. |
 | **19.2 Hybrid RUL Engine** | `OPEN PROXY PROCURED` | Remaining Useful Life probability distribution collapse, particle filter variance.<br>$\text{RUL} = \int P(\text{fail} \mid x) dt$ | **SCANIA Component X**<br>**NASA N-CMAPSS (DS01–08)**<br>**US Army CBM (Kuiper)** | 🟢 Real In-Service<br>🟡 Hybrid (Flight+Sim)<br>🟢 Real In-Service (Military) | **P1 (Core)**<br>**P2**<br>**P1 (Core)** | • [SCANIA Comp X](https://researchdata.se/en/catalogue/dataset/2024-34): Fleet time-to-event ground truth.<br>• [N-CMAPSS PHM](https://data.phmsociety.org/2021-phm-conference-data-challenge/): Multi-failure-mode RUL.<br>• [gen_pm GitHub](https://github.com/patrick-kuiper/gen_pm): Military CAN prediction. |
 | **19.3 Decision Audit Log** | `OPEN PROXY PROCURED` | Maintenance recommendation misclassification, spare part demand error.<br>Machine Learning Forecasting | **In-house `decision_audit_log.jsonl`** | 🟢 Real In-Service Pipeline | **P1 (Core)** | • [Results Audit Log in `results/`](file:///c:/Users/abhay/Documents/Vnest/results/decision_audit_log.jsonl): UTC-timestamped JSON-Lines audit stream linking onboard predictions to depot logistics. |
 
@@ -398,7 +398,7 @@ Legend:
 |  26. Diesel Engine Faults Features (IEEE DataPort)           ──► Graded Engine Compression & Injection Drop  |
 |                                                                                                             |
 |  [ PRIORITY 4: MATHEMATICAL DIGITAL TWIN SYNTHESIS ] (Classified Defense Gaps)                               |
-|  27. First-Principles Multi-Physics Core (`tank_sim/`)       ──► 13 Coupled Physics Equations (58t MBT)      |
+|  27. First-Principles Multi-Physics Core (`sim/`)       ──► 13 Coupled Physics Equations (58t MBT)      |
 |  28. Equivalent Full Charge (EFC) + Paris-Erdogan Model      ──► Main Gun Barrel Thermo-Chemical Erosion     |
 |  29. Built-In Test (BIT) Software Simulation                 ──► AESA Active Radar T/R Decay & Optronics     |
 |                                                                                                             |

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import numpy as np
 
-# Add tank_sim to sys.path for direct execution
+# Add sim to sys.path for direct execution
 current_dir = Path(__file__).resolve().parent
 parent_dir = current_dir.parent.parent
 sys.path.insert(0, str(parent_dir))

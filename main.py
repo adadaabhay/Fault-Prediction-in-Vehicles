@@ -17,10 +17,10 @@ import argparse
 
 import numpy as np
 
-from tank_sim.config import TankConfig
-from tank_sim.dataset import write_dataset
-from tank_sim.faults import FaultManager
-from tank_sim.tank import TankSimulator, default_mission
+from sim.config import TankConfig
+from sim.dataset import write_dataset
+from sim.faults import FaultManager
+from sim.tank import TankSimulator, default_mission
 
 KNOWN_FAULTS = sorted(FaultManager.FAULT_MAP.keys())
 

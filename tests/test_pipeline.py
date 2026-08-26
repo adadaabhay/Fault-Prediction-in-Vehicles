@@ -29,7 +29,7 @@ from telemetry_gateway.pipeline import PHMPipeline
 
 
 def _frame(**over):
-    """A plausible SI-unit frame, as tank_sim emits it."""
+    """A plausible SI-unit frame, as sim emits it."""
     base = {
         "step": 0, "time": 0.0, "rpm": 1500.0, "load": 0.45, "terrain": 0.2,
         "coolant_temp": 92.0, "oil_temp": 92.0, "exhaust_temp": 520.0,

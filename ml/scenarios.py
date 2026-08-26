@@ -10,9 +10,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from tank_sim.config import TankConfig
-from tank_sim.faults import FaultManager
-from tank_sim.tank import TankSimulator, MissionStep, default_mission
+from sim.config import TankConfig
+from sim.faults import FaultManager
+from sim.tank import TankSimulator, MissionStep, default_mission
 
 from .parts import (
     FAIL_HEALTH,
