@@ -5,7 +5,7 @@
 
 #define TANK_INFER_D_FEATURES   24
 #define TANK_INFER_H_HIDDEN     24
-#define TANK_INFER_R_PARTS      8
+#define TANK_INFER_R_PARTS      11
 #define TANK_INFER_C_CLASSES    13
 
 #endif /* TANK_PDM_DIMS_H */

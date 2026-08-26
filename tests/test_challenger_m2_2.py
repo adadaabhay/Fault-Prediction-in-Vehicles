@@ -247,7 +247,8 @@ class TestAdversarialPressureInvalidation(unittest.TestCase):
             X = np.tile(norm_features, (40, 1))
             rul_pred, cls_probs = predict_rul(self.model, X)
             
-            self.assertEqual(rul_pred.shape, (8,))
+            expected_r = np.array(self.model.p["Wy"]).shape[1]
+            self.assertEqual(rul_pred.shape, (expected_r,))
             self.assertEqual(cls_probs.shape, (13,))
             self.assertTrue(np.all(np.isfinite(rul_pred)), "RUL predictions contain NaN/Inf")
             self.assertTrue(np.all(np.isfinite(cls_probs)), "Class probabilities contain NaN/Inf")
