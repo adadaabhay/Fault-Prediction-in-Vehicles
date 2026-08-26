@@ -2,11 +2,13 @@
 
 import csv
 from pathlib import Path
+from sim.config import TankConfig
 from sim.tank import TankSimulator
 
 def generate(out_path: str, steps: int = 2000, fault_rate: float = 0.05):
     print(f"Generating Nbc subsystem data -> {out_path}")
-    sim = TankSimulator(steps=steps)
+    cfg = TankConfig()
+    sim = TankSimulator(cfg=cfg, seed=42)
     records = sim.run()
     
     # Filter columns relevant to this subsystem
