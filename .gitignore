@@ -1,9 +1,55 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*.egg-info/
-data/
+*$py.class
+*.so
+*.dll
+*.dylib
+*.o
+*.obj
+*.exe
+
+# Environments
 .venv/
 venv/
+ENV/
+env/
+
+# Large Datasets & Raw Time-Series Data
+datasets/
+data/
+*.csv
+*.tsv
+*.hdf
+*.h5
+*.parquet
+*.zip
+*.tar.gz
+*.7z
+
+# Dynamic Logs & Runtime Artifacts
+dtc_flash_log.jsonl
+*.log
+*.log.*
+*.tmp
+
+# Serialized Model Dumps (shipped weights remain in docs/model.json)
+results/models/*.joblib
+results/models/*.pkl
+
+# Testing & Coverage Caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# IDE and OS metadata
+.vscode/
+.idea/
 .DS_Store
-*.ipynb_checkpoints
+Thumbs.db
 ~$*

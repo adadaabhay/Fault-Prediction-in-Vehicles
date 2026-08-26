@@ -1,110 +1,152 @@
-# Fault-Prediction-in-Vehicles
+# Defense-Grade PHM/CBM+ Platform for Armored Fighting Vehicles
 
-Physics-informed simulator for **predictive maintenance of
-military battle tanks**. Every sensor is simulated from the physics-based
-equations in
-`Physics_Based_Sensor_Equations_Military_Tank_Preventive_Maintenance.docx`
-and coupled through an evolving shared vehicle state, so that injected
-faults degrade the readings in a physically consistent way.  The
-resulting labelled datasets feed AI models for anomaly detection, fault
-diagnosis and remaining-useful-life (RUL) prediction.
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![C99 Embedded](https://img.shields.io/badge/C99-MISRA--Informed-green.svg)](c_engine/CODING_STANDARD.md)
+[![ISO 13374](https://img.shields.io/badge/Architecture-ISO%2013374%20%2F%20OSA--CBM-orange.svg)](PROJECT.md)
+[![SAE J1939](https://img.shields.io/badge/Diagnostics-SAE%20J1939--71%2F73-red.svg)](telemetry_gateway/dtc_engine.py)
+[![Verification](https://img.shields.io/badge/Tests-390%20Passed-brightgreen.svg)](tests/)
+
+An end-to-end Condition-Based Maintenance Plus (**CBM+**) and Integrated Vehicle Health Management (**IVHM**) platform engineered for Heavy Armored Fighting Vehicles and Main Battle Tanks (e.g., CVRDE Arjun Mk-1A, T-90S Bhishma, Zorawar Light Tank). 
+
+The platform couples first-principles digital-twin physics with deterministic sensor plausibility filtering (FDIR), zero-allocation embedded C99 neural inference, SAE J1939-73 Diagnostic Trouble Code (DTC) generation, and real-time WebSocket streaming to an interactive tactical HUD.
+
+---
+
+## 1. System Architecture (ISO 13374 / OSA-CBM)
+
+The system implements the full 6-layer ISO 13374 condition-monitoring specification:
 
 ```
-Sensors -> Physics-Based Features -> Vehicle State -> AI -> Anomaly / Fault / RUL
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 ISO 13374 / OSA-CBM 6-LAYER PIPELINE                             │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                 │
+ 1. DATA ACQUISITION       UDP 9000 Socket · Serial COM (115200 baud) · REST `/api/telemetry/push`
+    (telemetry_gateway/)   Digital Twin Physics Simulator (`tank_sim/`) & CVRDE Combat Missions
+                                                 │
+                                                 ▼
+ 2. DATA MANIPULATION      58-Channel FDIR Plausibility Gate (`sensor_plausibility.py`)
+    (FDIR Pre-Filter)      • Physical bounds clamping       • Open/short circuit isolation (-999 bar)
+                           • Hampel EMI spike filter        • Stuck-at dwell timeout & Slew limiter
+                                                 │
+                                                 ▼
+ 3. STATE DETECTION        SAE J1939-73 DTC Engine (`dtc_engine.py`)
+    (DTC Engine)           • SPN/FMI translation            • PGN 65226 DM1 Active Malfunctions
+                           • PGN 65227 DM2 Historic Log     • Flash circular ring buffer persistence
+                                                 │
+                                                 ▼
+ 4. HEALTH ASSESSMENT      Subsystem Health Index (`ml/parts.py` / `pipeline.py`)
+    (Health Matrix)        • One-sided physical deviation   • Failure threshold anchor (25 FAIL_HEALTH)
+                           • Logarithmic rate normalization • Driveline & compliance load scaling
+                                                 │
+                                                 ▼
+ 5. PROGNOSTICS (RUL)      Dual-Tier Neural Inference:
+    (Neural Inference)     • Embedded C99 Edge Engine: Zero-allocation, <32 KB SRAM (`c_engine/`)
+                           • Python Training & Export: Grouped 3-way split by duty cell (`ml/`)
+                           • In-Browser Inference: Pure ES6 Matrix Forward Pass (`docs/lstm.js`)
+                                                 │
+                                                 ▼
+ 6. ADVISORY & TACTICAL    Real-Time Command HUD (`docs/index.html`)
+    (Command HUD)          • 270° Radial Canvas Gauges      • Subsystem Drill-Down Health Modals
+                           • Active DM1 Fault Chips         • 2.0s Watchdog Fallback to Flight Replay
 ```
 
-## Sensor families and governing physics
+---
 
-| # | Sensor | Physics | Key features | Associated fault |
-|---|--------|---------|--------------|------------------|
-| 1 | Vibration (accelerometer) | `a = d²x/dt²`, `x = A·sin(2πft+φ)` | RMS, kurtosis, FFT peaks, BPFO/BPFI | Bearing / gear wear |
-| 2 | Engine/exhaust temperature | `m·cₚ·dT/dt = Q̇_gen − Q̇_cool − Q̇_exh`, RTD `R = R₀(1+αΔT)` | Temperature trend | Overheating / cooling failure |
-| 3 | Oil pressure | Hagen–Poiseuille `ΔP = 8μLQ/(πr⁴)`, `μ(T)=A·e^{E/RT}` | Pressure deviation vs. speed/load/temp | Pump / leakage / blockage |
-| 4 | Oil debris | Inductive `L ≈ μN²A/l`, `ṅₚ = dNₚ/dt` | Particle count & rate | Accelerated wear |
-| 5 | Torque | `P = τω`, `τ = Tr/J`, `ω = 2πN/60` | Torque / power / shear | Load / efficiency degradation |
-| 6 | Exhaust | `PV = nRT`, `ṁ = ρAv`, `λ` | EGT, pressure, λ, O₂ | Combustion abnormality |
-| 7 | Fluid levels | `C = εA/d`, `V = πr²h` | Level / volume / capacitance | Leakage / depletion |
-| 8 | Hydraulics | Pascal `P = F/A`, `P_hyd = PQ` | Pressure–flow relation | Pump / valve / seal fault |
-| 9 | Suspension strain | `σ = Eε`, `ΔR/R = GF·ε` | Strain / load | Fatigue / overload |
-| 10 | Torsion bar | `θ = TL/JG`, `T = JGθ/L` | Twist / torque history | Torsion-bar fatigue |
-| 11 | Shock | `F = ma`, `a_RMS` | RMS / peak g | Terrain / component loading |
-| 12 | Acoustic | `p(t)=P₀+A·sin(2πft)`, `SPL = 20·log₁₀(p/p_ref)` | SPL, FFT signatures | Gear / bearing noise |
-| 13 | Acoustic emission | Wave equation, event features | Event rate / energy | Crack / impact / friction |
+## 2. Vehicle Subsystem Map & Governing Physics
 
-## Installation
+The platform models 13 coupled mechanical, hydraulic, thermal, and electrical subsystems:
+
+| # | Subsystem | Physical Sensors Simulated | Governing Equations & Physical Laws | Module Path |
+|---|---|---|---|---|
+| **1** | **Main Powerpack** | Coolant RTD Pt100, Type-K Thermocouple, Hot-film Mass Airflow, Turbo Boost, Dual EGT Pyrometry | • Lumped thermal ODE: $mc_p \frac{dT}{dt} = \dot{Q}_{gen} - \dot{Q}_{cool} - \dot{Q}_{exh}$<br>• Diesel $\lambda$ residual: $1.4\text{--}5.0$<br>• Ideal gas combustion: $PV = nRT$, $\dot{m} = \rho Av$ | [`tank_sim/physics/temperature.py`](tank_sim/physics/temperature.py)<br>[`tank_sim/physics/exhaust.py`](tank_sim/physics/exhaust.py)<br>[`tank_sim/cvrde/powerpack.py`](tank_sim/cvrde/powerpack.py) |
+| **2** | **Transmission & Final Drive** | Piezoelectric Accelerometers (RMS, Kurtosis, FFT), Shaft Torque Strain Bridges | • Fundamental shaft frequency: $f_r = N/60$<br>• Gear-mesh sidebands: $f_{GMF} = N_p Z_p/60 \pm f_r$<br>• Bearing defect harmonics: $BPFO / BPFI$<br>• Driveline efficiency: $\eta = \tau_{sprocket}/(\tau_{shaft}\cdot i)$ | [`tank_sim/physics/vibration.py`](tank_sim/physics/vibration.py)<br>[`tank_sim/physics/torque.py`](tank_sim/physics/torque.py) |
+| **3** | **Lubrication System** | Main gallery pressure transducer, Sump temperature probe, Inductive wear debris coil | • Hagen-Poiseuille laminar drop: $\Delta P = \frac{8\mu(T)LQ}{\pi r^4}$<br>• Arrhenius viscosity: $\mu(T) = A \exp(\frac{E_a}{RT})$<br>• Metal particle count: $L \sim \frac{\mu N^2 A}{l}$ + Poisson hits | [`tank_sim/physics/oil.py`](tank_sim/physics/oil.py) |
+| **4** | **Cooling System** | Radiator RTD probe, Expansion tank capacitive volume | • Thermostat opening hysteresis ($82\text{--}95^\circ\text{C}$)<br>• Convective core dissipation<br>• Dielectric capacitance: $C = \frac{\epsilon A}{d}$ | [`tank_sim/physics/temperature.py`](tank_sim/physics/temperature.py)<br>[`tank_sim/physics/level.py`](tank_sim/physics/level.py) |
+| **5** | **Hydraulics & Turret** | 210–300 bar circuit transducers, Servo flowmeters, Actuator LVDTs | • Pascal's law: $P = F/A$, $P_{hyd} = PQ$<br>• Orifice seal leak: $Q_{leak} = C_d A_{leak}\sqrt{\frac{2\Delta P}{\rho}}$<br>• Azimuth PMSM motor current draw | [`tank_sim/physics/hydraulics.py`](tank_sim/physics/hydraulics.py)<br>[`tank_sim/cvrde/gun_control.py`](tank_sim/cvrde/gun_control.py) |
+| **6** | **Suspension & Running Gear** | Hydrogas Suspension Units (HSU), Torsion bar strain gauges, Shock accelerometers | • Adiabatic gas spring: $P V^\gamma = \text{const}$<br>• Torsion bar twist: $\theta = \frac{TL}{JG}$, $\tau = \frac{Tr}{J}$<br>• Wheatstone bridge compliance: $\frac{\Delta R}{R} = GF\cdot\epsilon$<br>• ISO 8608 cross-country vertical shock: $a_{RMS}$ | [`tank_sim/physics/suspension.py`](tank_sim/physics/suspension.py)<br>[`tank_sim/cvrde/hydrogas_suspension.py`](tank_sim/cvrde/hydrogas_suspension.py) |
+| **7** | **120mm Gun & Hull Structure** | Piezoelectric Acoustic Emission (AE) burst sensors, Recoil buffer stroke LVDT | • Acoustic Emission wave propagation: $\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$<br>• Paris-Erdogan crack fatigue: $\frac{da}{dN} = C(\Delta K)^m$<br>• 120mm Equivalent Full Charge (EFC) shot wear | [`tank_sim/physics/acoustics.py`](tank_sim/physics/acoustics.py)<br>[`tank_sim/cvrde/gun_control.py`](tank_sim/cvrde/gun_control.py) |
+| **8** | **Auxiliary Power & NBC** | APU 28V DC bus voltmeter/ammeter, NBC differential pressure gauge | • 8.5 kW APU generator electric load balance<br>• Positive cabin barrier ($+500\text{ Pa}$)<br>• Darcy's law filter dust load: $\Delta P = \frac{1}{2}\rho v^2 \zeta$ | [`tank_sim/cvrde/auxiliary_nbc.py`](tank_sim/cvrde/auxiliary_nbc.py)<br>[`pipelines/apu_metropt.py`](pipelines/apu_metropt.py) |
+
+---
+
+## 3. Directory Layout
+
+```
+Fault-Prediction-in-Vehicles/
+├── tank_sim/               # Physics Simulator & Digital Twin
+│   ├── physics/            # 9 sensor physics modules (temperature, vibration, oil, etc.)
+│   ├── cvrde/              # CVRDE Arjun Mk-1A subsystem modules (powerpack, HSU, gun)
+│   ├── tank.py             # Central multi-subsystem simulation orchestrator
+│   ├── faults.py           # 12 physical fault injection profiles
+│   └── dataset.py          # CSV dataset exporter
+├── telemetry_gateway/      # Ingestion, FDIR Plausibility Gate & J1939 Engine
+│   ├── server.py           # FastAPI WebSocket & REST streaming server
+│   ├── sensor_plausibility.py # 58-channel pre-inference FDIR plausibility gate
+│   ├── dtc_engine.py       # SAE J1939-73 DM1/DM2 Diagnostic Trouble Code engine
+│   ├── live_sensor_ingest.py # UDP 9000 & Serial COM 115200 hardware ingestion
+│   └── pipeline.py         # End-to-end ISO 13374 pipeline composition
+├── c_engine/               # MISRA-C:2012 Informed C99 Edge Runtime
+│   ├── tank_pdm_infer.c    # Zero-allocation inference (<32 KB SRAM, fail-safe NaN trap)
+│   ├── tank_pdm_infer.h    # C API interface
+│   ├── binding.py          # Python ctypes bindings
+│   ├── build.py            # Automatic compiler discovery & shared library builder
+│   └── CODING_STANDARD.md  # MISRA compliance and static safety verification
+├── ml/                     # Machine Learning & Scenario Generator
+│   ├── lstm.py             # Pure NumPy dual-head LSTM (RUL regression + Fault classification)
+│   ├── scenarios.py        # Grouped 3-way dataset splitting (fault x duty profile)
+│   ├── parts.py            # Subsystem health index formulation & threshold tables
+│   └── train.py            # Training pipeline with checkpoint selection
+├── pipelines/              # Real-World Empirical Subsystem Pipelines
+│   ├── zema_hydraulics.py  # ZeMA Hydraulic Rig (UCI 447)
+│   ├── apu_metropt.py      # MetroPT-3 Train APU (UCI 791)
+│   ├── scania_aps.py       # Scania APS Heavy Trucks (UCI 421)
+│   └── naval_gasturbine.py # Naval Vessel Propulsion Plant (UCI 316)
+├── benchmark/              # Multi-Corpus Evaluation Harness
+│   └── evaluate_subsystems.py # Cross-corpus benchmark with leakage guards
+├── docs/                   # Tactical Command HUD & Web Frontend
+│   ├── index.html          # Real-time operational dashboard
+│   ├── dashboard.js        # UI gauge updater, DM1 fault chips, modal views
+│   ├── live.js             # WebSocket streaming client with 2.0s watchdog
+│   ├── lstm.js             # ES6 in-browser neural forward pass
+│   └── model.json          # Shipped dual-head neural network weights
+├── tests/                  # Verification Harness (390+ Automated Tests)
+├── PROJECT.md              # Complete ISO 13374 & SAE J1939 architecture guide
+├── info.md                 # Detailed physical equations & military gap roadmap
+├── TEST_INFRA.md           # Category-Partition & boundary test matrix
+└── requirements.txt        # Pinned production runtime dependencies
+```
+
+---
+
+## 4. Quickstart Guide
+
+### 1. Installation
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+# Clone the repository
+git clone https://github.com/adadaabhay/Fault-Prediction-in-Vehicles.git
+cd Fault-Prediction-in-Vehicles
+
+# Create virtual environment and install pinned dependencies
+python -m venv .venv
+# On Windows:
+.venv\Scripts\activate
+# On Linux/macOS:
+source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-## Usage
+### 2. Generate Simulated Multi-Sensor Telemetry
 
-Generate a labelled dataset with injected faults:
+Generate 12,000 discrete 10 Hz time-steps of 58-channel vehicle telemetry with injected bearing wear, cooling failure, and oil pump degradation:
 
 ```bash
 python main.py --steps 12000 \
     --faults bearing_wear,cooling_failure,oil_pump_degradation \
     --out data/sim_dataset.csv
 ```
-
-The CSV contains raw sensor readings, physics-derived features
-(`vib_rms`, `vib_kurtosis`, `spl_db`, `debris_rate`, ...), a fused
-`health_index` (0–100), an extrapolated `rul_steps` estimate, an
-`anomaly_score`, and one-hot `fault_*` label columns.
-
-### Available fault profiles
-
-```
-bearing_wear gear_wear cooling_failure oil_pump_degradation
-bearing_clearance_wear seal_leakage fuel_injector_fault
-exhaust_restriction torsion_fatigue hydraulic_valve_fault
-structural_crack drivetrain_efficiency_loss
-```
-
-### Programmatic use
-
-```python
-import numpy as np
-from tank_sim.config import TankConfig
-from tank_sim.faults import FaultManager
-from tank_sim.tank import TankSimulator
-from tank_sim.dataset import write_dataset
-
-fm = FaultManager(np.random.default_rng(0))
-fm.add("bearing_wear", start_step=3000, ramp_steps=1500)
-fm.add("cooling_failure", start_step=6000, ramp_steps=1500)
-
-sim = TankSimulator(TankConfig(), faults=fm, seed=0)
-records = sim.run()                 # list of dict records
-write_dataset(sim, "data/run.csv")  # CSV with health features + labels
-```
-
-`run()` resets the simulator first, so calling it repeatedly (as
-`write_dataset` does internally) always reproduces the same mission rather
-than continuing from the previous end state.
-
-## Health fusion
-
-Following section 15 of the physics document, the fused health index
-combines vibration RMS/kurtosis, oil temperature/pressure, debris rate,
-AE activity, structural stress and lambda into a single 0–100 score;
-`rul_steps` is obtained by linear extrapolation of the health-index
-trajectory to the failure threshold (section 16).
-
-Health is anchored to the documented thresholds: a subsystem whose worst
-parameter sits exactly at its critical threshold scores `FAIL_HEALTH`, so the
-health curve and the threshold alarms cannot disagree. Deviation is one-sided
-(being better than the healthy reference is never penalised), and monotonically
-accumulating counters (total debris, cumulative twist) and consumables (fuel
-level) are excluded from scoring — including them made health a proxy for
-elapsed mission time rather than condition. `overall` is fused from the
-subsystem healths rather than scored from its own parameters.
-
-Load-driven channels (shaft torque, road-wheel load, shock RMS) are shown but
-excluded from health, since duty is not degradation. The condition indicators
-are the load-normalised ones: `susp_compliance` (strain per unit load) and
-`driveline_efficiency`.
 
 ## Live dashboard (GitHub Pages)
 

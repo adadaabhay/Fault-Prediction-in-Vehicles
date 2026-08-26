@@ -1,0 +1,309 @@
+{
+  "metadata": {
+    "timestamp": "2026-08-23T17:02:20.601006+00:00",
+    "model": "LightGBM",
+    "scoring_policy": "Only corpora with independent ground-truth labels are scored. Label-defining channels are asserted out of X. Grouped splits are used wherever a temporal key exists (ZeMA cycle blocks, MetroPT episodes, Component X vehicles); the per-entry cv_strategy field is authoritative. Single-class folds are counted, not scored.",
+    "scoring_policy_history": "This field previously asserted 'time series are split by episode, never shuffled' while four ZeMA targets, Scania and both naval targets in fact ran shuffled K-fold. ZeMA is now grouped by contiguous cycle block. Scania APS rows are independent per-vehicle snapshots with no temporal ordering, so stratified shuffling is correct there and is stated as such."
+  },
+  "subsystems": {
+    "hydraulics_cooler_fault": {
+      "dataset": "ZeMA Hydraulic Rig (UCI 447)",
+      "subsystem": "Turret traverse / stabiliser hydraulics",
+      "features_count": 36,
+      "metrics": {
+        "cv_strategy": "GroupKFold by group (5 folds, 37 groups)",
+        "roc_auc_mean": 0.9988429066787277,
+        "roc_auc_std": 0.002314186642544813,
+        "pr_auc_mean": 0.9976789122347312,
+        "f1_mean": 0.9918042545192518,
+        "precision_mean": 0.9906137184115524,
+        "recall_mean": 0.9933333333333334,
+        "brier_score": 0.009566271464879528,
+        "n_samples": 2205,
+        "n_positive": 1464,
+        "positive_rate": 0.6639455782312925,
+        "folds_single_class": 0,
+        "label_provenance": "ground_truth_rig_profile"
+      }
+    },
+    "hydraulics_valve_fault": {
+      "dataset": "ZeMA Hydraulic Rig (UCI 447)",
+      "subsystem": "Turret traverse / stabiliser hydraulics",
+      "features_count": 36,
+      "metrics": {
+        "cv_strategy": "GroupKFold by group (5 folds, 37 groups)",
+        "roc_auc_mean": 0.9885177721478431,
+        "roc_auc_std": 0.016026608731193943,
+        "pr_auc_mean": 0.988621134848564,
+        "f1_mean": 0.949978994673585,
+        "precision_mean": 0.965113294007088,
+        "recall_mean": 0.9362615982644618,
+        "brier_score": 0.038075777425178085,
+        "n_samples": 2205,
+        "n_positive": 1080,
+        "positive_rate": 0.4897959183673469,
+        "folds_single_class": 0,
+        "label_provenance": "ground_truth_rig_profile"
+      }
+    },
+    "hydraulics_pump_fault": {
+      "dataset": "ZeMA Hydraulic Rig (UCI 447)",
+      "subsystem": "Turret traverse / stabiliser hydraulics",
+      "features_count": 36,
+      "metrics": {
+        "cv_strategy": "GroupKFold by group (5 folds, 37 groups)",
+        "roc_auc_mean": 1.0,
+        "roc_auc_std": 0.0,
+        "pr_auc_mean": 1.0,
+        "f1_mean": 0.9973966509680796,
+        "precision_mean": 0.9961904761904762,
+        "recall_mean": 0.9986440677966101,
+        "brier_score": 0.0027319048630556238,
+        "n_samples": 2205,
+        "n_positive": 984,
+        "positive_rate": 0.44625850340136053,
+        "folds_single_class": 0,
+        "label_provenance": "ground_truth_rig_profile"
+      }
+    },
+    "hydraulics_accumulator_fault": {
+      "dataset": "ZeMA Hydraulic Rig (UCI 447)",
+      "subsystem": "Turret traverse / stabiliser hydraulics",
+      "features_count": 36,
+      "metrics": {
+        "cv_strategy": "GroupKFold by group (5 folds, 37 groups)",
+        "roc_auc_mean": 0.9089869339056541,
+        "roc_auc_std": 0.05610344103395838,
+        "pr_auc_mean": 0.9586316695197391,
+        "f1_mean": 0.9058574546163305,
+        "precision_mean": 0.8922675365383709,
+        "recall_mean": 0.9220322577087288,
+        "brier_score": 0.11766335057696645,
+        "n_samples": 2205,
+        "n_positive": 1606,
+        "positive_rate": 0.728344671201814,
+        "folds_single_class": 0,
+        "label_provenance": "ground_truth_rig_profile"
+      }
+    },
+    "apu_metropt_apu_failure": {
+      "dataset": "MetroPT-3 Train APU (UCI 791)",
+      "subsystem": "Auxiliary power unit / pneumatics",
+      "task": "leak detection (in progress)",
+      "features_count": 20,
+      "metrics": {
+        "cv_strategy": "GroupKFold by group (4 folds, 4 groups)",
+        "roc_auc_mean": 0.9932400287285177,
+        "roc_auc_std": 0.004042198477901632,
+        "pr_auc_mean": 0.9515462730112207,
+        "f1_mean": 0.6839678019570057,
+        "precision_mean": 0.9280111815064286,
+        "recall_mean": 0.6820153190927856,
+        "brier_score": 0.06055110116951601,
+        "n_samples": 146097,
+        "n_positive": 29954,
+        "positive_rate": 0.2050281662183344,
+        "folds_single_class": 0,
+        "label_provenance": "ground_truth_company_failure_reports"
+      }
+    },
+    "apu_metropt_apu_prefailure": {
+      "dataset": "MetroPT-3 Train APU (UCI 791)",
+      "subsystem": "Auxiliary power unit / pneumatics",
+      "task": "24h-ahead prediction",
+      "features_count": 20,
+      "metrics": {
+        "cv_strategy": "GroupKFold by group (4 folds, 4 groups)",
+        "roc_auc_mean": 0.4887977509137789,
+        "roc_auc_std": 0.1336261342027985,
+        "pr_auc_mean": 0.19250390291984398,
+        "f1_mean": 0.015186952574005706,
+        "precision_mean": 0.37876636765306354,
+        "recall_mean": 0.0082012751924485,
+        "brier_score": 0.1570803817288549,
+        "n_samples": 172926,
+        "n_positive": 28668,
+        "positive_rate": 0.16578189514590055,
+        "folds_single_class": 0,
+        "label_provenance": "ground_truth_company_failure_reports"
+      }
+    },
+    "heavy_fleet_scania": {
+      "dataset": "Scania APS Trucks (UCI 421)",
+      "subsystem": "Air pressure system / heavy fleet",
+      "features_count": 170,
+      "metrics": {
+        "cv_strategy": "StratifiedKFold (5 folds, shuffled)",
+        "roc_auc_mean": 0.9878999463905125,
+        "roc_auc_std": 0.007785976783929471,
+        "pr_auc_mean": 0.8134392463587554,
+        "f1_mean": 0.6856107202205722,
+        "precision_mean": 0.8111425831202046,
+        "recall_mean": 0.6,
+        "brier_score": 0.007915463098498037,
+        "n_samples": 10000,
+        "n_positive": 195,
+        "positive_rate": 0.0195,
+        "folds_single_class": 0,
+        "label_provenance": "ground_truth_workshop_records",
+        "imputation": "none (NaN-aware learner)"
+      }
+    },
+    "gasturbine_gt_compressor_decay": {
+      "dataset": "Naval GT Propulsion Plant (UCI 316)",
+      "subsystem": "Gas-turbine powerplant (AGT1500-class)",
+      "task": "continuous degradation regression",
+      "features_count": 23,
+      "metrics": {
+        "cv_strategy": "KFold (5 folds, shuffled)",
+        "r2_mean": 0.9978709699826316,
+        "r2_std": 0.0001608891229374592,
+        "mae_mean": 0.000508384295836328,
+        "target_span": 0.050000000000000044,
+        "mae_pct_of_span": 1.0167685916726552,
+        "n_samples": 11934,
+        "n_distinct_levels": 51,
+        "label_provenance": "ground_truth_experimental_design"
+      }
+    },
+    "gasturbine_gt_turbine_decay": {
+      "dataset": "Naval GT Propulsion Plant (UCI 316)",
+      "subsystem": "Gas-turbine powerplant (AGT1500-class)",
+      "task": "continuous degradation regression",
+      "features_count": 23,
+      "metrics": {
+        "cv_strategy": "KFold (5 folds, shuffled)",
+        "r2_mean": 0.9878366845251859,
+        "r2_std": 0.0009360651598315614,
+        "mae_mean": 0.0005675194541847243,
+        "target_span": 0.025000000000000022,
+        "mae_pct_of_span": 2.2700778167388953,
+        "n_samples": 11934,
+        "n_distinct_levels": 26,
+        "label_provenance": "ground_truth_experimental_design"
+      }
+    },
+    "fleet_rul_componentx": {
+      "dataset": "SCANIA Component X (researchdata.se 2024-34)",
+      "subsystem": "Fleet component RUL",
+      "task": "time-to-event regression",
+      "features_count": 105,
+      "metrics": {
+        "cv_strategy": "GroupKFold (5 folds, grouped)",
+        "r2_mean": 0.44994077400227067,
+        "r2_std": 0.024199148593245973,
+        "mae_mean": 48.427150444875416,
+        "target_span": 481.8,
+        "mae_pct_of_span": 10.05129731109909,
+        "n_samples": 92518,
+        "n_distinct_levels": 5783,
+        "label_provenance": "ground_truth_workshop_repair_records",
+        "censoring": {
+          "rows": 186630,
+          "vehicles": 4000,
+          "vehicles_observed": 2000,
+          "vehicles_censored": 2000,
+          "censored_pct": 50.0,
+          "corpus_censored_pct": 90.35244161358811,
+          "corpus_vehicles": 23550,
+          "sample_is_stratified": true
+        },
+        "target": "rul = study_end - time_step, uncensored vehicles only",
+        "note": "A censored vehicle's study length is a lower bound on component life, not a life; regressing on it biases estimates downwards. Folds are grouped by vehicle_id because a truck's readouts are highly correlated."
+      }
+    }
+  },
+  "excluded_from_scoring": {
+    "engine_core_deutz": {
+      "dataset": "Deutz TCD 12.0 V6 (Zenodo 5766940)",
+      "subsystem": "Engine core / air path",
+      "reason": "Source ships no fault labels. The 'combustion_anomaly' indicator is a threshold rule over lambda and engine_power_kw; scoring a classifier against it while those channels remain in X re-derives the rule (ROC-AUC 1.0 over 5 positives) and is not evidence of anything.",
+      "label_provenance": "heuristic_derived",
+      "label_defining_columns": [
+        "lambda",
+        "lambda_phys",
+        "lambda_valid",
+        "engine_power_kw"
+      ],
+      "heuristic_positive_count": 5,
+      "role": "regime supplier + model-vs-measurement residual baseline",
+      "regime": {
+        "samples": 1999,
+        "duration_s": 199.80000000000007,
+        "engine_speed_rpm": [
+          796.2659,
+          2201.975
+        ],
+        "load_torque_Nm": [
+          27.41091,
+          1860.716
+        ],
+        "power_kw": [
+          2.48688924371045,
+          395.45566613510374
+        ],
+        "boost_ratio": [
+          1.0739829241422725,
+          2.9273046506137868
+        ],
+        "lambda": [
+          0.7470253280305446,
+          116292671.8591451
+        ],
+        "label_provenance": "heuristic_derived"
+      },
+      "residual_baseline": {
+        "shared_channels": 42,
+        "samples": 1999,
+        "mean_abs_residual_top5": {
+          "p_3_resid": 63232.83803059793,
+          "p_20_resid": 53085.64692120549,
+          "p_22_resid": 49124.39431169358,
+          "p_21_resid": 43971.27792821602,
+          "p_40_resid": 21112.583667013016
+        }
+      }
+    },
+    "can_bus_aegis": {
+      "dataset": "AEGIS instrumented vehicle CAN trace",
+      "subsystem": "Vehicle data bus / powertrain duty cycle",
+      "reason": "Every diagnostic lamp and warning channel reads zero for the whole trip, so there is no fault to predict. Verified rather than assumed -- see lamp_channels_active.",
+      "label_provenance": "no_labels_healthy_trip",
+      "lamp_channels_checked": 16,
+      "lamp_channels_active": 0,
+      "role": "real CAN framing for the J1939 gateway + road duty cycle",
+      "duty_cycle": {
+        "trip": "20181113_Driver1_Trip1",
+        "samples": 79330,
+        "duration_s": 7932.89990234375,
+        "duration_min": 132.21499837239583,
+        "rpm": {
+          "min": 676.5,
+          "median": 2000.9879760742188,
+          "max": 4835.86376953125
+        },
+        "coolant_temp": {
+          "min": 93.0,
+          "median": 96.0,
+          "max": 97.5
+        },
+        "boost_pressure_bar": {
+          "min": 0.949999988079071,
+          "median": 1.0299999713897705,
+          "max": 1.7182151079177856
+        },
+        "engine_torque_Nm": {
+          "min": 0.0,
+          "median": 70.0,
+          "max": 303.31719970703125
+        },
+        "accel_pedal_pct": {
+          "min": 0.0,
+          "median": 16.0,
+          "max": 100.0
+        },
+        "label_provenance": "no_labels_healthy_trip"
+      }
+    }
+  }
+}

@@ -1,12 +1,20 @@
-# Simulator + numpy LSTM runtime. Pinned to match the parent build
-# (../requirements.txt) so a model trained here reproduces there -- an
-# unpinned minor bump changes model numerics, and the exported weights in
-# docs/model.json are only meaningful against a known numpy.
+# Production runtime dependencies -- pinned for reproducible numerics
+# Core numerics & physics
 numpy==2.4.6
+pandas==3.0.5
+scipy==1.18.0
+joblib==1.5.3
 
-# --- Test-only ---------------------------------------------------------------
-# tests/test_leakage.py uses a decision tree to assert that no single channel
-# separates its own fault class the way a label would. It skips cleanly if
-# scikit-learn is absent, but CI must have it or that guard silently no-ops.
+# Machine learning & benchmarks
 scikit-learn==1.9.0
+lightgbm==4.7.0
+
+# Ingestion & Telemetry Gateway
+fastapi==0.141.1
+uvicorn==0.52.3
+requests==2.34.2
+h5py==3.16.0
+
+# Testing & Verification
 pytest==9.1.1
+
