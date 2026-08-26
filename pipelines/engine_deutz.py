@@ -29,6 +29,7 @@ import os
 
 import numpy as np
 import pandas as pd
+from pipelines._paths import resolve as _resolve
 
 # Declares that the shipped indicator is derived, not observed.  Consumers
 # (e.g. benchmark/evaluate_subsystems.py) must surface this next to any metric.
@@ -44,21 +45,20 @@ LAMBDA_PHYSICAL_MIN = 0.5
 LAMBDA_PHYSICAL_MAX = 20.0
 
 
-def load_deutz_nrtc_data(data_dir: str = "datasets/procured/deutz_engine",
+def load_deutz_nrtc_data(data_dir: str = None,
                          source: str = "testbench") -> pd.DataFrame:
     """Load the Deutz NRTC cycle and compute thermodynamic/turbomachinery features.
 
     ``source`` selects ``"testbench"`` (physical bench, 10 Hz) or ``"cfd"``
     (GT-Power simulation, 100 Hz) over the same 700-900 s cycle window.
     """
+    if data_dir is None:
+        data_dir = _resolve("procured/deutz_engine")
     names = {"testbench": ("testbench_nrtc.csv", "tb_nrtc.csv"),
              "cfd": ("gt_nrtc.csv",),
              "doe": ("gt_doe.csv",)}
     if source not in names:
         raise ValueError(f"source must be one of {sorted(names)}, got {source!r}")
-
-    if not os.path.exists(data_dir) and os.path.exists(os.path.join("..", data_dir)):
-        data_dir = os.path.join("..", data_dir)
 
     df = None
     for fname in names[source]:

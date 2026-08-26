@@ -30,7 +30,7 @@ from telemetry_gateway.sensor_plausibility import SENSOR_LIMITS_CATALOG
 from telemetry_gateway.units import (CANONICAL_UNITS, NATIVE_TO_CANONICAL,
                                      looks_canonical, to_canonical, to_native)
 
-_DEMO = (ROOT / "docs" / "live_stream.json") if (ROOT / "docs" / "live_stream.json").exists() else (ROOT / "Fault-Prediction-in-Vehicles" / "docs" / "live_stream.json")
+_DEMO = (ROOT / "Fault-Prediction-in-Vehicles" / "docs" / "live_stream.json")
 
 
 def _demo_records():

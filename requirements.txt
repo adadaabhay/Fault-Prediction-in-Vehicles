@@ -14,7 +14,10 @@ fastapi==0.141.1
 uvicorn==0.52.3
 requests==2.34.2
 h5py==3.16.0
+# Serial hardware ingest (SerialSensorListener)
+pyserial==3.5
+# WebSocket transport layer (starlette/fastapi dependency)
+websockets==14.1
 
 # Testing & Verification
 pytest==9.1.1
-

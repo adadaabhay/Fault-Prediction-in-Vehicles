@@ -20,6 +20,7 @@ import os
 
 import numpy as np
 import pandas as pd
+from pipelines._paths import resolve as _resolve
 
 # Company failure reports (authoritative ground truth; see module docstring).
 # The source PDF numbers these #1, #1, #3, #4 -- the second is a typo for #2.
@@ -115,7 +116,7 @@ def _engineer(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_metropt_apu_data(data_dir: str = "datasets/procured/metropt3_apu",
+def load_metropt_apu_data(data_dir: str = None,
                           max_rows: int = 100000,
                           prefail_horizon_h: float = 24.0,
                           usecols: list | None = None) -> pd.DataFrame:
@@ -125,8 +126,8 @@ def load_metropt_apu_data(data_dir: str = "datasets/procured/metropt3_apu",
     the head predates every reported failure, so use :func:`load_metropt_episodes`
     for anything that needs positive samples.
     """
-    if not os.path.exists(data_dir) and os.path.exists(os.path.join("..", data_dir)):
-        data_dir = os.path.join("..", data_dir)
+    if data_dir is None:
+        data_dir = _resolve("procured/metropt3_apu")
     csv_path = os.path.join(data_dir, "MetroPT3(AirCompressor).csv")
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"MetroPT3(AirCompressor).csv not found in {data_dir}")
@@ -150,7 +151,7 @@ def load_metropt_apu_data(data_dir: str = "datasets/procured/metropt3_apu",
     return df
 
 
-def load_metropt_episodes(data_dir: str = "datasets/procured/metropt3_apu",
+def load_metropt_episodes(data_dir: str = None,
                           prefail_horizon_h: float = 24.0,
                           context_h: float = 48.0,
                           target: str = "apu_failure") -> pd.DataFrame:
@@ -162,8 +163,8 @@ def load_metropt_episodes(data_dir: str = "datasets/procured/metropt3_apu",
     keeping each episode contiguous, so it can be split by ``failure_id`` with
     ``GroupKFold`` instead of being shuffled across folds.
     """
-    if not os.path.exists(data_dir) and os.path.exists(os.path.join("..", data_dir)):
-        data_dir = os.path.join("..", data_dir)
+    if data_dir is None:
+        data_dir = _resolve("procured/metropt3_apu")
     csv_path = os.path.join(data_dir, "MetroPT3(AirCompressor).csv")
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"MetroPT3(AirCompressor).csv not found in {data_dir}")

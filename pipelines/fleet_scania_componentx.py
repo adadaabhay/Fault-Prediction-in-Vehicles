@@ -38,10 +38,17 @@ import pandas as pd
 
 LABEL_PROVENANCE = "ground_truth_workshop_repair_records"
 
+from pipelines._paths import dataset_root as _dataset_root
+
+def _scania_data_dir() -> str:
+    base = _dataset_root()
+    return str(base / "scania" / "2024-34-2" / "data")
+
 DATA_DIR = os.path.join("datasets", "scania", "2024-34-2", "data")
 
-# Fallback locations, so a differently-unpacked download still resolves.
+# Fallback locations — searched in priority order.
 _CANDIDATE_DIRS = (
+    _scania_data_dir(),
     DATA_DIR,
     os.path.join("datasets", "scania"),
     os.path.join("datasets", "procured", "scania_componentx"),

@@ -23,6 +23,9 @@ static inline float fast_tanh(float z) {
 }
 
 static void fast_softmax(const float* logits, float* probs, int len) {
+    if (len <= 0) {
+        return;  /* nothing to compute; caller must not rely on probs contents */
+    }
     float max_val = logits[0];
     for (int i = 1; i < len; i++) {
         if (logits[i] > max_val) {
@@ -168,10 +171,10 @@ TankInferStatus tank_infer_step(const TankModelWeights* w,
 
     /* Fault Classification Head: Softmax(h @ Wcls + bcls) */
     float logits[TANK_INFER_C_CLASSES];
-    for (int c = 0; c < C; c++) {
-        logits[c] = w->bcls[c];
+    for (int ci = 0; ci < C; ci++) {
+        logits[ci] = w->bcls[ci];
         for (int j = 0; j < H; j++) {
-            logits[c] += s->h[j] * w->Wcls[j][c];
+            logits[ci] += s->h[j] * w->Wcls[j][ci];
         }
     }
     fast_softmax(logits, res->fault_probs, C);
@@ -179,10 +182,10 @@ TankInferStatus tank_infer_step(const TankModelWeights* w,
     /* Find Top Predicted Fault */
     uint32_t top_idx = 0;
     float top_prob = res->fault_probs[0];
-    for (int c = 1; c < C; c++) {
-        if (res->fault_probs[c] > top_prob) {
-            top_prob = res->fault_probs[c];
-            top_idx = (uint32_t)c;
+    for (int ci = 1; ci < C; ci++) {
+        if (res->fault_probs[ci] > top_prob) {
+            top_prob = res->fault_probs[ci];
+            top_idx = (uint32_t)ci;
         }
     }
     /* If the recurrent state diverged, top_prob is NaN and top_idx is still 0

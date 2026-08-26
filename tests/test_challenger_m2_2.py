@@ -35,10 +35,9 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
-# Ensure project root and Fault-Prediction-in-Vehicles are on sys.path
+# Ensure project root is on sys.path (conftest.py also does this for pytest)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "Fault-Prediction-in-Vehicles"))
 
 from telemetry_gateway.sensor_plausibility import (
     SensorPlausibilityGate,
@@ -82,8 +81,7 @@ ALL_CATALOG_CHANNELS = list(SENSOR_LIMITS_CATALOG.keys())
 
 def load_trained_lstm_model() -> Tuple[LSTMModel, dict]:
     """Load the trained LSTM model from docs/model.json."""
-    docs_dir = PROJECT_ROOT / "docs" if (PROJECT_ROOT / "docs" / "model.json").exists() else PROJECT_ROOT / "Fault-Prediction-in-Vehicles" / "docs"
-    model_json_path = docs_dir / "model.json"
+    model_json_path = PROJECT_ROOT / "docs" / "model.json"
     with open(model_json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     
@@ -101,11 +99,9 @@ def load_trained_lstm_model() -> Tuple[LSTMModel, dict]:
 
 def load_scaler_config() -> dict:
     """Load normalization scaler bounds from config.json."""
-    docs_dir = PROJECT_ROOT / "docs" if (PROJECT_ROOT / "docs" / "config.json").exists() else PROJECT_ROOT / "Fault-Prediction-in-Vehicles" / "docs"
-    cfg_path = docs_dir / "config.json"
+    cfg_path = PROJECT_ROOT / "docs" / "config.json"
     with open(cfg_path, "r", encoding="utf-8") as f:
         return json.load(f)
-
 
 
 def normalize_telemetry_22(telemetry: Dict[str, Any], scaler_cfg: dict) -> np.ndarray:

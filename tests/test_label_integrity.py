@@ -100,7 +100,10 @@ class TestDeutzDeclaresHeuristicProvenance(unittest.TestCase):
         self.assertEqual(int(df.loc[df["lambda"] > LAMBDA_PHYSICAL_MAX, "lambda_valid"].sum()), 0)
 
     def test_residuals_align_bench_to_cfd(self):
-        r = load_deutz_residuals()
+        try:
+            r = load_deutz_residuals()
+        except FileNotFoundError as exc:
+            self.skipTest(f"Deutz testbench dataset absent: {exc}")
         self.assertGreater(len(r.attrs["shared_channels"]), 20)
         self.assertEqual(r.attrs["label_provenance"], "model_residual_unsupervised")
         for c in r.attrs["shared_channels"][:5]:

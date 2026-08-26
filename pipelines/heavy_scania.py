@@ -6,12 +6,13 @@ Implements missing value handling and cost matrix target evaluation.
 import os
 import numpy as np
 import pandas as pd
+from pipelines._paths import resolve as _resolve
 
 
 LABEL_PROVENANCE = "ground_truth_workshop_records"
 
 
-def load_scania_aps_data(data_dir: str = "datasets/procured/scania_aps",
+def load_scania_aps_data(data_dir: str = None,
                          max_rows: int = 15000,
                          impute: bool = True) -> pd.DataFrame:
     """Loads and preprocesses the Scania APS tabular failure dataset.
@@ -22,8 +23,8 @@ def load_scania_aps_data(data_dir: str = "datasets/procured/scania_aps",
     NaNs and let a NaN-aware learner (LightGBM, HistGradientBoosting) handle
     them inside each fold instead.
     """
-    if not os.path.exists(data_dir) and os.path.exists(os.path.join("..", data_dir)):
-        data_dir = os.path.join("..", data_dir)
+    if data_dir is None:
+        data_dir = _resolve("procured/scania_aps")
     train_path = os.path.join(data_dir, "aps_failure_training_set.csv")
     if not os.path.exists(train_path):
         raise FileNotFoundError(f"aps_failure_training_set.csv not found in {data_dir}")

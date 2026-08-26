@@ -21,12 +21,13 @@ subsets with :func:`stratified_cycle_sample`.
 import os
 import numpy as np
 import pandas as pd
+from pipelines._paths import resolve as _resolve
 
 
-def load_zema_hydraulic_data(data_dir: str = "datasets/condition+monitoring+of+hydraulic+systems") -> pd.DataFrame:
+def load_zema_hydraulic_data(data_dir: str = None) -> pd.DataFrame:
     """Loads and extracts statistical features from the ZeMA hydraulic dataset."""
-    if not os.path.exists(data_dir) and os.path.exists(os.path.join("..", data_dir)):
-        data_dir = os.path.join("..", data_dir)
+    if data_dir is None:
+        data_dir = _resolve("condition+monitoring+of+hydraulic+systems")
     profile_path = os.path.join(data_dir, "profile.txt")
     if not os.path.exists(profile_path):
         raise FileNotFoundError(f"profile.txt not found in {data_dir}")

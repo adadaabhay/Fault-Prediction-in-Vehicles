@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-FPV = ROOT if (ROOT / "docs").exists() else ROOT / "Fault-Prediction-in-Vehicles"
+FPV = ROOT / "Fault-Prediction-in-Vehicles"
 DOCS = FPV / "docs"
 sys.path.insert(0, str(FPV))
 

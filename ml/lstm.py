@@ -17,6 +17,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .constants import DEFAULT_W_CLS, DEFAULT_W_REG
+
 
 def sigmoid(z):
     return 1.0 / (1.0 + np.exp(-np.clip(z, -40, 40)))
@@ -68,14 +70,14 @@ class LSTMModel:
                 "hs": hs, "cs": cs, "gates": gates, "X": X}
 
     def loss(self, cache: dict, y_reg: np.ndarray, y_cls: int,
-             w_reg: float = 2.0, w_cls: float = 0.4) -> float:
+             w_reg: float = DEFAULT_W_REG, w_cls: float = DEFAULT_W_CLS) -> float:
         mse = float(np.mean((cache["reg"] - y_reg) ** 2))
         ce = -np.log(np.clip(cache["cls"][y_cls], 1e-12, 1.0))
         return w_reg * mse + w_cls * ce
 
     # ------------------------------------------------------------------
     def backward(self, cache: dict, y_reg: np.ndarray, y_cls: int,
-                 w_reg: float = 2.0, w_cls: float = 0.4) -> dict:
+                 w_reg: float = DEFAULT_W_REG, w_cls: float = DEFAULT_W_CLS) -> dict:
         """BPTT from the final-step outputs (sequence-to-one).
 
         ``w_reg``/``w_cls`` must match the values passed to :meth:`loss`.  They
@@ -190,7 +192,7 @@ class Adam:
 def train(model: LSTMModel, train_sets: list[dict], val_sets: list[dict],
           epochs: int = 25, batch: int = 64, lr: float = 0.001,
           grad_clip: float = 1.0, log_every: int = 200,
-          w_reg: float = 2.0, w_cls: float = 0.4,
+          w_reg: float = DEFAULT_W_REG, w_cls: float = DEFAULT_W_CLS,
           weight_decay: float = 1e-3) -> dict:
     """train_sets/val_sets: lists of {'X': (n,T,D), 'Y': (n,R), 'L': (n,)}."""
     adam = Adam(lr=lr)

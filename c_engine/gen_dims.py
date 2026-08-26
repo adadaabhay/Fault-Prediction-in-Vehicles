@@ -10,10 +10,9 @@ import json
 from pathlib import Path
 
 C_DIR = Path(__file__).resolve().parent
-ROOT = C_DIR.parent
-DOCS_DIR = ROOT / "docs" if (ROOT / "docs" / "config.json").exists() else ROOT / "Fault-Prediction-in-Vehicles" / "docs"
-CONFIG_PATH = DOCS_DIR / "config.json"
-MODEL_PATH = DOCS_DIR / "model.json"
+ROOT = C_DIR.parent          # Fault-Prediction-in-Vehicles/
+CONFIG_PATH = ROOT / "docs" / "config.json"
+MODEL_PATH  = ROOT / "docs" / "model.json"
 DIMS_HEADER = C_DIR / "tank_pdm_dims.h"
 
 

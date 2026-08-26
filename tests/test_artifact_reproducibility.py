@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DOCS = ROOT / "docs" if (ROOT / "docs" / "config.json").exists() else ROOT / "Fault-Prediction-in-Vehicles" / "docs"
+DOCS = ROOT / "docs"
 
 
 class TestArtifactConsistency(unittest.TestCase):

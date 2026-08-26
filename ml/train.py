@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from .lstm import LSTMModel, predict_rul, train
+from .constants import DEFAULT_W_CLS, DEFAULT_W_REG
 from .parts import (INPUT_FEATURES, PART_ORDER, RUL_CAP_STEPS, PARTS,
                     FAIL_HEALTH)
 from .scenarios import build_dataset, save_demo
@@ -54,7 +55,7 @@ def main() -> None:
     ap.add_argument("--stride", type=int, default=6)
     ap.add_argument("--demo-steps", type=int, default=2000)
     ap.add_argument("--w-reg", type=float, default=2.0)
-    ap.add_argument("--w-cls", type=float, default=1.5,
+    ap.add_argument("--w-cls", type=float, default=DEFAULT_W_CLS,
                     help="classification loss weight")
     ap.add_argument("--quick", action="store_true",
                     help="small dataset for smoke testing")

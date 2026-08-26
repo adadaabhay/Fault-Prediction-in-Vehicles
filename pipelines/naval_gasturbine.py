@@ -26,6 +26,7 @@ import os
 
 import numpy as np
 import pandas as pd
+from pipelines._paths import resolve as _resolve
 
 LABEL_PROVENANCE = "ground_truth_experimental_design"
 
@@ -57,8 +58,6 @@ TURBINE_DECAY_MIN = 0.975
 
 
 def _find_data_file(data_dir: str) -> str:
-    if not os.path.exists(data_dir) and os.path.exists(os.path.join("..", data_dir)):
-        data_dir = os.path.join("..", data_dir)
     for root, _dirs, files in os.walk(data_dir):
         if "__MACOSX" in root:
             continue
@@ -69,8 +68,10 @@ def _find_data_file(data_dir: str) -> str:
 
 
 def load_naval_propulsion_data(
-        data_dir: str = "datasets/procured/naval_propulsion") -> pd.DataFrame:
+        data_dir: str = None) -> pd.DataFrame:
     """Load the CBM propulsion-plant sweep with engineered turbomachinery features."""
+    if data_dir is None:
+        data_dir = _resolve("procured/naval_propulsion")
     path = _find_data_file(data_dir)
     raw = np.loadtxt(path)
     if raw.shape[1] != len(FEATURE_NAMES) + len(TARGET_NAMES):
