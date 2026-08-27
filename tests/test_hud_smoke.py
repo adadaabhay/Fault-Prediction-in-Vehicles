@@ -17,7 +17,9 @@ source GitHub Pages serves) and asserts:
      and the amber "n/a" tag when its part modal is opened.
   5. The ``error`` and ``pending`` terminal states of the chip are
      reachable when the artifact probes fail (using ``page.route``
-     to inject 404 responses without disturbing the real files).
+     to inject 404 responses without disturbing the real files), and
+     a 2xx response with a non-parseable body is correctly routed
+     to ``error`` (a build defect, not a mid-deploy state).
 
 The test follows the same opt-in pattern as the rest of the suite
 (``tests/test_hil_ingest.py``, ``tests/test_fdir_on_real_data.py``):
@@ -221,7 +223,7 @@ class TestHudSmoke(unittest.TestCase):
                              f"{pid}.{key} modal row should have exactly "
                              f"one n/a tag, found {tag.count()}")
             # closeModule() is bound to Escape in init() at
-            # dashboard.js:866 -- no comment about a no-op fallback.
+            # dashboard.js:876 -- no comment about a no-op fallback.
             self._page.keyboard.press("Escape")
 
     def test_05_retrain_chip_is_error_when_both_probes_404(self):
@@ -269,6 +271,39 @@ class TestHudSmoke(unittest.TestCase):
         self.assertEqual(
             self._page.locator("#chip_retrain").text_content().strip(),
             "MODEL RETRAIN PENDING",
+        )
+
+    def test_07_retrain_chip_is_error_when_one_body_fails_to_parse(self):
+        # A 2xx with a non-parseable body is a build defect, not a
+        # mid-deploy state.  Per the chip contract (see
+        # docs/REMEDIATION.md "Dynamic retrain chip contract"), any
+        # parse failure on either artifact must route to ``error``,
+        # never ``pending`` -- a green chip on a broken body is the
+        # exact lie this gate is meant to prevent.  test_06 covers
+        # the HTTP-failure-pending branch; this test covers the
+        # 2xx+garbage-error branch on the opposite side of the
+        # symmetry.
+        def _route_garbage_model(route):
+            if route.request.url.endswith("model.json"):
+                route.fulfill(status=200,
+                              content_type="application/json",
+                              body="<html>oops</html>")
+            else:
+                route.continue_()
+        self._page.route("**/*", _route_garbage_model)
+        try:
+            self._goto()
+        finally:
+            self._page.unroute("**/*", _route_garbage_model)
+        chip_class = self._page.locator(
+            "#chip_retrain"
+        ).get_attribute("class") or ""
+        self.assertIn(CHIP_ERROR, chip_class.split(),
+                      f"chip class is {chip_class!r}; expected 'error' "
+                      f"when one body is 2xx+non-JSON")
+        self.assertEqual(
+            self._page.locator("#chip_retrain").text_content().strip(),
+            "ARTIFACTS UNREACHABLE",
         )
 
 

@@ -53,12 +53,16 @@ function isSyntheticChannel(key) {
  *                   JSON. A 200 with a malformed body is reported as
  *                   ``error`` -- a green chip on a broken page is the
  *                   exact lie this gate is meant to prevent.
- *   - ``pending`` : exactly one probe fails (4xx, 5xx, network, or
- *                   CORS error). The page is mid-deploy; refresh once
- *                   the trainer has finished.
- *   - ``error``   : both probes fail (any non-2xx, network, CORS, or
- *                   JSON parse error). The page is up but the LSTM
- *                   cannot run; do not trust the readouts.
+ *   - ``pending`` : exactly one probe fails its HTTP check (4xx, 5xx,
+ *                   network, or CORS error). The page is mid-deploy;
+ *                   refresh once the trainer has finished. A parse
+ *                   failure on a 2xx is NOT pending -- see ``error``.
+ *   - ``error``   : both probes fail their HTTP check, OR either body
+ *                   fails to parse as JSON, OR both fail. A parse
+ *                   failure on a 2xx is a build defect (the artifact
+ *                   was published truncated or empty), not a mid-
+ *                   deploy state; the operator needs to rebuild, not
+ *                   refresh.
  *
  * The chip is identified by id ``chip_retrain`` so a future round can
  * add more dynamic chips without re-engineering this hook.
@@ -66,32 +70,43 @@ function isSyntheticChannel(key) {
 async function verifyArtifacts() {
   const chip = $("chip_retrain");
   if (!chip) return;
+  /* Returns one of:
+   *   "ok"     -- 2xx AND parseable JSON
+   *   "http"   -- 4xx / 5xx / network / CORS (probe never saw a body)
+   *   "parse"  -- 2xx but the body is not parseable JSON (build defect)
+   */
   async function probe(url) {
     try {
       const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) return false;
-      // Parse the body so a 200 with a truncated or malformed JSON
-      // payload is reported as error, not ok.  The body is consumed
-      // here; callers do not need it.
-      await r.json();
-      return true;
-    } catch (_) { return false; }
+      if (!r.ok) return "http";
+      try { await r.json(); return "ok"; }
+      catch (_) { return "parse"; }
+    } catch (_) { return "http"; }
   }
-  const [cfgOk, mdlOk] = await Promise.all([probe("config.json"), probe("model.json")]);
+  const [cfgR, mdlR] = await Promise.all([probe("config.json"), probe("model.json")]);
   chip.classList.remove("ok", "pending", "error");
-  if (cfgOk && mdlOk) {
+  // Parse failures are always error, never pending -- a 200 with a
+  // broken body is a build defect, not a mid-deploy state.
+  const anyParse = (cfgR === "parse" || mdlR === "parse");
+  if (cfgR === "ok" && mdlR === "ok") {
     chip.classList.add("ok");
     chip.textContent = "MODEL RETRAIN COMPLETE";
     chip.title = "config.json and model.json both 2xx with parseable bodies; LSTM weights present.";
-  } else if (!cfgOk && !mdlOk) {
+  } else if ((cfgR === "http" && mdlR === "http") || anyParse) {
     chip.classList.add("error");
     chip.textContent = "ARTIFACTS UNREACHABLE";
-    chip.title = "config.json and model.json both failed the HTTP or JSON probe. Run \`python -m ml.train\` and refresh.";
+    const why = anyParse
+      ? "one or both artifact bodies failed to parse as JSON (truncated or empty publish). Re-run \`python -m ml.train\` and refresh."
+      : "config.json and model.json both failed the HTTP probe. Run \`python -m ml.train\` and refresh.";
+    chip.title = why;
   } else {
     chip.classList.add("pending");
     chip.textContent = "MODEL RETRAIN PENDING";
-    const missing = !cfgOk ? "config.json" : "model.json";
-    chip.title = `${missing} failed the HTTP or JSON probe. Run \`python -m ml.train\` and refresh.`;
+    const missing = cfgR !== "ok" ? "config.json" : "model.json";
+    const why = cfgR === "parse" || mdlR === "parse"
+      ? `${missing} returned a non-parseable body (build defect -- re-run training, do not just refresh)`
+      : `${missing} failed the HTTP probe (4xx, 5xx, network, or CORS). The page is mid-deploy; refresh.`;
+    chip.title = why;
   }
 }
 
@@ -892,19 +907,23 @@ async function init() {
 
 init().catch(err => {
   console.error("dashboard init failed:", err);
-  // Even on init failure, run the chip-flip hook so the operator sees
-  // an honest "pending" / "error" chip rather than a permanent amber
-  // "verifying…" tooltip.  If the chip-flip itself throws (it touches
-  // the DOM, so a future refactor could trip it), force the chip to
-  // "error" so the operator is never shown a half-updated chip.
-  verifyArtifacts().catch(e => {
-    console.error("verifyArtifacts failed:", e);
-    const chip = $("chip_retrain");
-    if (chip) {
-      chip.classList.remove("ok", "pending");
-      chip.classList.add("error");
-      chip.textContent = "ARTIFACTS UNREACHABLE";
-      chip.title = "chip-flip probe threw after init failed; refresh and check the console.";
-    }
-  });
+  // The chip is now an honest page-health indicator, not just an
+  // artifact-reachability probe.  If init() rejected, the page is
+  // half-broken regardless of whether the two files in docs/ parse,
+  // so we force the chip to "error" and DO NOT re-call
+  // verifyArtifacts() -- doing so would flip a green chip onto a
+  // page whose own init has crashed.  If the chip element is gone
+  // for some reason, fall back to a console error so the failure is
+  // at least visible to the developer tools.
+  const chip = $("chip_retrain");
+  if (!chip) {
+    console.error("init failed and #chip_retrain is missing; "
+                  + "page is in an undefined state.");
+    return;
+  }
+  chip.classList.remove("ok", "pending");
+  chip.classList.add("error");
+  chip.textContent = "PAGE INIT FAILED";
+  chip.title = `dashboard init() rejected: ${err && err.message ? err.message : err}. `
+             + "Open the browser console for the full trace; do not trust the readouts.";
 });
