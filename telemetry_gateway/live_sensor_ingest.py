@@ -174,7 +174,7 @@ class TelemetryBroker:
             self._last_update_time = now
             self._active_source = source
 
-            is_hw = source.lower() in ("udp", "serial", "http", "live", "hardware", "serial_mock", "binary_struct", "j1939")
+            is_hw = source.lower() in ("udp", "serial", "live", "hardware", "serial_mock", "binary_struct", "j1939")
             if is_hw:
                 self._last_hardware_time = now
                 self._last_hardware_source = source

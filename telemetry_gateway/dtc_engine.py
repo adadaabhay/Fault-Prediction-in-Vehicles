@@ -588,8 +588,19 @@ class DTCEngine:
         # Ensure directory exists
         self.flash_file.parent.mkdir(parents=True, exist_ok=True)
 
+        # O(1) line counter — seeded once at startup, then maintained via increment.
+        # Avoids reading the whole file on every persist_to_flash() call.
+        self._flash_line_count: int = 0
+        if self.flash_file.exists():
+            try:
+                with open(self.flash_file, "rb") as _fh:
+                    self._flash_line_count = _fh.read().count(b"\n")
+            except OSError:
+                self._flash_line_count = 0
+
         if auto_recover and self.flash_file.exists():
             self.recover_from_flash()
+
 
     # ------------------------------------------------------------------------
     # Ingress Hook 1: Sensor Plausibility FDIR Faults
@@ -1144,9 +1155,11 @@ class DTCEngine:
                 # Append record line
                 with open(self.flash_file, "a", encoding="utf-8") as fh:
                     fh.write(json.dumps(entry) + "\n")
+                self._flash_line_count += 1
 
-                # Check if rollover pruning is required
-                self._check_and_rollover_flash()
+                # Only read the file when the O(1) counter says we're over capacity.
+                if self._flash_line_count > self.flash_capacity:
+                    self._check_and_rollover_flash()
             except Exception as exc:
                 logger.error(f"Failed to persist DTC record to flash: {exc}")
 
@@ -1167,8 +1180,10 @@ class DTCEngine:
                 with open(tmp_file, "w", encoding="utf-8") as fh:
                     fh.writelines(retained)
                 tmp_file.replace(self.flash_file)
+                self._flash_line_count = len(retained)
         except Exception as exc:
             logger.warning(f"Flash ring buffer rollover warning: {exc}")
+
 
     def read_flash_log(self, limit: int = 100, reverse: bool = True) -> List[Dict[str, Any]]:
         """Reads recent maintenance records from the flash ring buffer."""
@@ -1203,11 +1218,19 @@ class DTCEngine:
             except Exception as exc:
                 logger.error(f"Failed to clear flash log: {exc}")
 
-    def recover_from_flash(self) -> None:
-        """Recovers active and historic DTC state from the on-disk flash log."""
+    def recover_from_flash(self, max_age_hours: float = 72.0) -> None:
+        """Recovers active and historic DTC state from the on-disk flash log.
+
+        ``max_age_hours`` gates how stale an ACTIVE record can be before it
+        is demoted to historic on recovery.  Faults older than this have almost
+        certainly been investigated or cleared; re-activating them silently is
+        worse than promoting them to historic for audit.
+        """
         with self._lock:
             if not self.flash_file.exists():
                 return
+
+            stale_cutoff = time.time() - max_age_hours * 3600.0
 
             try:
                 with open(self.flash_file, "r", encoding="utf-8") as fh:
@@ -1226,6 +1249,14 @@ class DTCEngine:
                         dtc = DTCRecord.from_dict(entry)
 
                         if event_type == "ACTIVE" or event_type == "OCCURRENCE_INCREMENT":
+                            # Demote stale ACTIVE records rather than re-activating them.
+                            # Missing/null utc_float is treated as now (recent) — not stale.
+                            raw_ts = entry.get("utc_float")
+                            last_seen = float(raw_ts) if raw_ts is not None else time.time()
+                            if last_seen < stale_cutoff:
+                                dtc.active = False
+                                self._historic_dtcs[key] = dtc
+                                continue
                             dtc.active = True
                             self._active_dtcs[key] = dtc
                             if key in self._historic_dtcs:

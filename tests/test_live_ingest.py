@@ -63,7 +63,7 @@ class TestTelemetryBroker(unittest.TestCase):
         self.assertEqual(pushed["rpm"], 2350.0)
         self.assertEqual(pushed["source"], "http")
         self.assertEqual(pushed["seq"], 1)
-        self.assertTrue(pushed["is_live_hardware"])
+        self.assertFalse(pushed["is_live_hardware"])  # http is not a physical hardware source
 
         latest = self.broker.get_latest_telemetry()
         self.assertEqual(latest["rpm"], 2350.0)
@@ -427,7 +427,7 @@ class TestServerLiveEndpoints(unittest.TestCase):
         self.assertEqual(res["status"], "accepted")
         self.assertEqual(res["data"]["rpm"], 2320.0)
         self.assertEqual(res["data"]["source"], "http")
-        self.assertTrue(res["is_live_hardware"])
+        self.assertFalse(res["is_live_hardware"])  # http REST push is not physical hardware
 
     def test_live_post_telemetry_push_wrapped(self):
         """Verify POST /api/telemetry/push ingests wrapped sensors payload."""
@@ -467,7 +467,7 @@ class TestServerLiveEndpoints(unittest.TestCase):
 
     def test_live_get_telemetry_status(self):
         """Verify GET /api/telemetry/status returns complete status metrics."""
-        requests.post(f"{self.base_url}/api/telemetry/push", json={"rpm": 2150.0})
+        requests.post(f"{self.base_url}/api/telemetry/push", json={"rpm": 2150.0, "source": "udp"})
 
         resp = requests.get(f"{self.base_url}/api/telemetry/status")
         self.assertEqual(resp.status_code, 200)

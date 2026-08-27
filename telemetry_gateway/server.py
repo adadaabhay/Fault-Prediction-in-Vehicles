@@ -59,10 +59,19 @@ _rate_state: Dict[str, List[float]] = {}
 _rate_lock = threading.Lock()
 
 
+# Maximum unique keys in _rate_state; evicts oldest half when exceeded.
+_RATE_STATE_MAX: int = 2048
+
+
 def _rate_limit_ok(key: str) -> bool:
     """Simple token bucket; one bucket per client address."""
     now = time.monotonic()
     with _rate_lock:
+        if len(_rate_state) >= _RATE_STATE_MAX and key not in _rate_state:
+            # Evict oldest half by insertion order (dict preserves order ≥3.7)
+            evict = list(_rate_state.keys())[: _RATE_STATE_MAX // 2]
+            for k in evict:
+                del _rate_state[k]
         tokens, last = _rate_state.get(key, [PUSH_RATE_LIMIT_HZ, now])
         tokens = min(PUSH_RATE_LIMIT_HZ,
                      tokens + (now - last) * PUSH_RATE_LIMIT_HZ)
@@ -71,6 +80,7 @@ def _rate_limit_ok(key: str) -> bool:
             return False
         _rate_state[key] = [tokens - 1.0, now]
         return True
+
 
 
 LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
@@ -362,11 +372,11 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
             et1 = J1939FrameParser.encode_et1(
                 float(clean.get("coolant_temp", 0.0)),
                 oil_temp_c=clean.get("oil_temp"))
-            # oil_pressure is carried in Pa throughout the simulator; J1939
-            # SPN 100 is kPa. The conversion used to assume bar, so a
-            # simulator frame saturated the field at its 1000 kPa ceiling.
+            # oil_pressure is in bar after pipeline.process() / to_canonical().
+            # SPN 100 expects kPa. bar -> kPa = * 100 (not / 1000).
             efl = J1939FrameParser.encode_efl_p1(
-                float(clean.get("oil_pressure", 0.0)) / 1000.0)
+                float(clean.get("oil_pressure", 0.0)) * 100.0)
+
 
             burst_dict = None
             if health is not None:
