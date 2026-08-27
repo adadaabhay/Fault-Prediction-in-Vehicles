@@ -89,10 +89,26 @@ PARTS = {
              "healthy": 92},
             {"key": "coolant_level", "label": "Coolant Level", "unit": "%",
              "min": 0, "max": 100, "warn_lo": 55, "crit_lo": 35,
-             "healthy": 95, "scale": 100},
+             "healthy": 95, "scale": 100,
+             # The simulator emits coolant_level as a 0-1 fraction
+             # (see sim/physics/level.py:coolant_frac).  ``scale: 100``
+             # lifts the LSTM input to the percent space that the
+             # warn_lo/crit_lo thresholds are anchored in.  Keep the
+             # two in sync: change one, change the other.
+             "_unit_note": "stored 0-1, thresholds 0-100; scale=100"},
             {"key": "exhaust_pressure", "label": "Exhaust Press.", "unit": "bar",
              "min": 0, "max": 3, "warn_hi": 2.2, "crit_hi": 2.6,
-             "healthy": 1.29, "scale": 1e-5},
+             "healthy": 1.29, "scale": 1e-5,
+             # Thresholds are anchored to typical diesel-engine exhaust
+             # back-pressure figures (turbocharged, post-DPF, with a
+             # restrictive fault).  The synthetic stream peaks at
+             # ~1.75 bar (``sim/physics/exhaust.py``), so the warn/crit
+             # band will not fire from the simulator -- by design, the
+             # same display-only discipline as the NBC channels.  The
+             # alarm is calibrated for real hardware, not the
+             # synthetic suite, and the simulator is intentionally
+             # kept below it so we can tell synthetic from real.
+             "_calibration_note": "industry figures; synthetic stays healthy"},
         ],
         "gauge": "coolant_temp",
         "alarm_key": "coolant_temp",

@@ -69,13 +69,22 @@ function buildGrid() {
 
     let rows = "";
     for (const p of part.params) {
+      // health_exclude parameters are display-only: the LSTM never sees
+      // them and the simulator does not produce them.  Render with a
+      // faded modifier so the operator can tell at a glance which rows
+      // are real measurements and which are placeholders.  See
+      // docs/REMEDIATION.md round 1, finding #4.
+      const ex = p.health_exclude ? " display-only" : "";
+      const labelSuffix = p.health_exclude
+        ? ` <span class="display-only-tag" title="not a measurement; placeholder until a real sensor feeds the gateway">n/a</span>`
+        : "";
       rows += `
-        <div class="param-row">
-          <span class="p-label">${p.label}</span>
+        <div class="param-row${ex}">
+          <span class="p-label">${p.label}${labelSuffix}</span>
           <span class="p-val" id="val_${pid}_${p.key}">--</span>
           <span class="p-unit">${p.unit}</span>
         </div>
-        <div class="param-track" id="track_${pid}_${p.key}"></div>`;
+        <div class="param-track${ex}" id="track_${pid}_${p.key}"></div>`;
     }
 
     card.innerHTML = `
@@ -363,7 +372,16 @@ function updateOverall(rec, reg, cls, overallHealth) {
   /* Two new vitals (added in audit-remediation round 1, schema D=24 → 26):
      coolant level (%) and exhaust pressure (bar).  Thresholds mirror
      ml/parts.py: warn_lo=55 / crit_lo=35 for coolant level,
-     warn_hi=2.2 / crit_hi=2.6 for exhaust pressure. */
+     warn_hi=2.2 / crit_hi=2.6 for exhaust pressure.
+
+     The exhaust-pressure warn band is calibrated for industry figures
+     (turbocharged diesel, post-DPF, with restrictive fault).  The
+     synthetic stream tops out near 1.75 bar
+     (``sim/physics/exhaust.py``), so the warn/crit class will not
+     fire from the simulator.  This is intentional: it lets the
+     operator distinguish "synthetic stream, healthy by design" from
+     "real hardware, restricted exhaust".  The same display-only
+     discipline as the NBC channels; see ``docs/PROVENANCE.md``. */
   const clEl = $("v_coolantlvl");
   if (rec.coolant_level != null) {
     const cl = rec.coolant_level * 100;
@@ -447,10 +465,17 @@ function openModule(pid) {
   list.innerHTML = "";
   for (const p of part.params) {
     const item = document.createElement("div");
-    item.className = "spark-item";
+    // health_exclude parameters: same display-only discipline as the
+    // part card.  The modal title bar is updated to call this out so
+    // the operator does not mistake a placeholder for a measurement.
+    const ex = p.health_exclude ? " display-only" : "";
+    item.className = "spark-item" + ex;
+    const labelSuffix = p.health_exclude
+      ? ` <span class="display-only-tag" title="not a measurement; placeholder until a real sensor feeds the gateway">n/a</span>`
+      : "";
     item.innerHTML = `
       <div class="spark-head">
-        <span class="p-label">${p.label}</span>
+        <span class="p-label">${p.label}${labelSuffix}</span>
         <span class="p-val" id="mspark_val_${p.key}">--</span>
         <span class="p-unit">${p.unit}</span>
       </div>

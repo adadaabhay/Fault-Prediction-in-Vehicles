@@ -354,3 +354,26 @@ footer.credits { justify-content: center; border-top: none; margin-top: 0; paddi
   font-size: 0.78rem;
 }
 .remediation-link:hover { text-decoration: underline; }
+
+/* --- Display-only parameter discipline ----------------------------------
+   Parameters flagged ``health_exclude`` in ml/parts.py are placeholders,
+   not measurements.  Render them with a faded style and an "n/a" tag
+   so an operator can tell at a glance which rows are real.  Mirrors
+   the schema-level discipline captured in docs/REMEDIATION.md. */
+.param-row.display-only,
+.param-track.display-only,
+.spark-item.display-only {
+  opacity: 0.55;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.display-only-tag {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0 0.35rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  border: 1px solid rgba(216, 161, 26, 0.5);
+  color: #f0c651;
+  border-radius: 999px;
+  vertical-align: middle;
+}

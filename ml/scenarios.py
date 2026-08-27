@@ -352,13 +352,16 @@ def build_dataset(window_samples: int = 512, sample_rate: float = 500.0,
     per_scenario = [
         {"name": sc.name, "profile": sc.profile,
          "group": scenario_group(sc), "X": x, "Y": y,
-         "L": np.array([class_index[lbl] for lbl in l]),
-         # The classifier is single-label (C is the declared fault taxonomy);
-         # co-firing faults in combo scenarios are surfaced here so the HUD
-         # can render them without distorting the classification head.
-         "combo": tuple(sorted({f for f, _ in sc.faults}))}
+         "L": np.array([class_index[lbl] for lbl in l])}
         for sc, x, y, l in zip(suite, all_feats, all_win_rul, all_win_labels)
     ]
+    # Combo co-firing is intentionally NOT carried in per_scenario: the
+    # live stream does not serialise it and the dashboard has no consumer
+    # for it.  Single-label classification (C is the declared fault
+    # taxonomy) means combo scenarios collapse to their alphabetically
+    # first observable fault, so the model head and the surfaced label
+    # agree.  Surfacing the co-fault in the HUD is a future task; see
+    # docs/REMEDIATION.md, "What did **not** change" section.
 
     # Demo live stream: healthy -> staged fault progression.
     if demo_faults is None:

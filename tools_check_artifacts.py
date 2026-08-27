@@ -17,20 +17,28 @@ import json
 import sys
 from pathlib import Path
 
-DOCS = Path(__file__).resolve().parent / "docs"
+# This script is run from the repo root (`python tools_check_artifacts.py`)
+# but it imports from the ``ml`` package, which only resolves when the repo
+# root is on ``sys.path``.  Do that first, before any other import that
+# would pull in ``ml`` transitively, so we don't need a ``# noqa: E402``
+# on every line.
+_REPO_ROOT = Path(__file__).resolve().parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from ml.parts import INPUT_FEATURES, PART_ORDER
+from ml.scenarios import ALL_FAULTS
 
 # Authoritative targets.  These come from the Python schema
 # (``ml.parts.INPUT_FEATURES``, ``ml.parts.PART_ORDER``) and the declared
 # fault taxonomy (``ml.scenarios.ALL_FAULTS``).  Read them here so a future
 # retrain that reverts the schema cannot silently re-ship D=24.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ml.parts import INPUT_FEATURES, PART_ORDER  # noqa: E402
-from ml.scenarios import ALL_FAULTS  # noqa: E402
-
 EXPECTED_D = len(INPUT_FEATURES)
 EXPECTED_R = len(PART_ORDER)
 EXPECTED_C = 1 + len(ALL_FAULTS)   # healthy + 12 declared fault classes
 EXPECTED_H = 24                     # LSTM hidden size (training-time choice)
+
+DOCS = _REPO_ROOT / "docs"
 
 
 def main() -> int:
