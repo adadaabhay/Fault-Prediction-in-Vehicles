@@ -40,6 +40,7 @@ body {
   flex: 0 0 auto;
 }
 .vit-logo { height: 46px; width: auto; display: block; }
+.medxai-logo { height: 50px; width: auto; display: block; }
 .brand-text h1 { font-size: 1.05rem; letter-spacing: 1.2px; color: var(--cyan); line-height: 1.25; }
 .brand-text .poc { color: var(--dim); font-size: .72rem; letter-spacing: .4px; margin-top: 4px; }
 .status-box, .clock-box { margin-left: auto; text-align: center; }
