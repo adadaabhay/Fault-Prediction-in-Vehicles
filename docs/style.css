@@ -348,6 +348,14 @@ footer.credits { justify-content: center; border-top: none; margin-top: 0; paddi
   color: #f0c651;
   background: rgba(216, 161, 26, 0.08);
 }
+/* Error state for the dynamic chip-flip hook.  Red, distinct from the
+   "warn" amber, so the operator can read "missing artifacts" at a
+   glance.  See docs/REMEDIATION.md round 1 -> follow-up. */
+.r-chip.error {
+  border-color: rgba(192, 57, 43, 0.7);
+  color: #ff6b5a;
+  background: rgba(192, 57, 43, 0.10);
+}
 .remediation-link {
   color: #6ab8f0;
   text-decoration: none;

@@ -14,7 +14,7 @@
 | 3 | HIGH | `ml/scenarios.py:202` | Combo scenarios (`combo_wear_overheat`, `combo_wear_hyd`, `combo_lube_fatigue`, `combo_lube_seal`) ran a `lambda a: a[0] if a else "healthy"` selector that took the first fault in iteration order — which depended on the simulator's internal RNG state and made the training label for the same combo scenario differ between runs. The first expression was also syntactically a callable, which broke on the next Python revision. | Replaced with `sorted(obs)[0] if obs else "healthy"`, so the label is the alphabetically first observable fault. The classification head remains single-label by design (C is the declared fault taxonomy, not the number of co-firing faults). **Co-firing faults are not currently surfaced in the HUD** — see "What did **not** change" below. | Retrain (combo scenario test now stably labelled); `test_label_integrity.py` continues to pass |
 | 4 | HIGH | `ml/parts.py` | Six display-only parameters (NBC `overpressure` / `filter_dp`, exhaust `backpressure` / `particulate_index`, acoustics `ae_burst_energy`, hydraulics `hyd_force`) were declared without `health_exclude`, so `part_health_index` scored them even though the LSTM never saw them — the health index and the model's view of the world disagreed. | Marked each as `health_exclude: True` with a comment explaining why (no simulator plant, sensor on a future pipeline). | `tests/test_leakage.py::TestSchemaCoversEverySubsystem` |
 | 5 | HIGH | CI gates | `.github/workflows/tests.yml` and `pages.yml` referenced `tests/test_leakage.py` and `tools_check_artifacts.py` but neither file existed. The "no-skip" leakage guard was unenforceable. | Shipped both. `test_leakage.py` is unconditional (no `skipUnless`) and exercises three classes of invariant: schema coverage, label leakage, and C-header / model / config agreement. `tools_check_artifacts.py` reads the schema from `ml.parts` and the C dim from the Python source, so it cannot drift. | `python -m pytest tests/test_leakage.py` (15/15 pass) + `python tools_check_artifacts.py` (exit 0) |
-| 6 | HIGH | UI | The dashboard had no visible signal that the published artifacts reflected the remediation. An operator looking at the live page could not tell whether the LSTM was running the new gradient, the new schema, or the old one. | Added a `REMEDIATION ROUND 1` bar above the parts grid showing each fix as a chip (`LSTM GRADIENT FIXED`, `INPUT SCHEMA D=26`, `COMBO LABELS FIXED`, `DISPLAY-ONLY FLAGGED`, `LEAKAGE GATES LIVE`, `MODEL RETRAIN PENDING`). The amber "PENDING" chip is removed by a small JS hook that flips it to green when the model passes the artifact gate. | Manual: `docs/index.html` line 60-78 + `docs/style.css::.remediation-bar` |
+| 6 | HIGH | UI | The dashboard had no visible signal that the published artifacts reflected the remediation. An operator looking at the live page could not tell whether the LSTM was running the new gradient, the new schema, or the old one. | Added a `REMEDIATION ROUND 1` bar above the parts grid showing each fix as a chip (`LSTM GRADIENT FIXED`, `INPUT SCHEMA D=26`, `COMBO LABELS FIXED`, `DISPLAY-ONLY FLAGGED`, `LEAKAGE GATES LIVE`, `MODEL RETRAIN COMPLETE`). The retrain chip is a *dynamic* artifact-gate indicator: on load, `dashboard.js::verifyArtifacts()` issues two `cache: "no-store"` fetches against `config.json` and `model.json` and flips the chip to one of three terminal states — `ok` (both 200, green) / `pending` (one 404, amber, label `MODEL RETRAIN PENDING`) / `error` (both unreachable, red, label `ARTIFACTS UNREACHABLE`). The page renders the chip in its initial `pending` class so it cannot appear green before the probes have run. | `tests/test_hud_smoke.py::TestHudSmoke::test_retrain_chip_is_ok` (Playwright headless against the served `docs/index.html`); manual via the local Pages preview |
 
 ## Dataset-availability statement
 
@@ -46,6 +46,23 @@ field and the dashboard has no consumer for it. Surfacing co-firing in the
 HUD is a future task; for this round the operator sees the primary label
 only, which matches the loss the model actually optimises.
 
+## Dynamic retrain chip contract
+
+The 6th chip in the remediation bar is a live artifact-gate indicator, not a
+static badge. Its three terminal states are:
+
+| State | Trigger | Visual | Operator reads |
+|-------|---------|--------|----------------|
+| `ok` | both `config.json` and `model.json` return HTTP 200 in the browser probe | green pill, label `MODEL RETRAIN COMPLETE` | "the page is shipping the new weights" |
+| `pending` | exactly one of the two returns 404 | amber pill, label `MODEL RETRAIN PENDING` | "an export is mid-flight — refresh in a moment" |
+| `error` | both fetches fail (network, 5xx, CORS) | red pill, label `ARTIFACTS UNREACHABLE` | "the page is up but the model is not — do not trust the readouts" |
+
+The probe uses `fetch(..., { cache: "no-store" })` so a stale cache cannot make a
+broken deployment look green. The chip is rendered in the initial `pending`
+class, so the page can never claim `ok` before the probes have resolved.
+Verified by `tests/test_hud_smoke.py` (Playwright headless), which waits for
+the chip to leave `pending` before asserting the final state.
+
 ## What did **not** change
 
 - The C edge runtime source (`c_engine/tank_pdm_infer.c`) is dim-agnostic
@@ -64,6 +81,7 @@ Local verification (matches the CI gate at `.github/workflows/tests.yml`):
 python -m c_engine.gen_dims                  # writes tank_pdm_dims.h D=26
 python -m pytest tests/test_leakage.py -v    # 15/15 pass
 python -m pytest tests/ -v                    # full suite green
+python -m pytest tests/test_hud_smoke.py -v   # headless browser smoke (skips if playwright missing)
 python tools_check_artifacts.py               # exit 0
 python -m ml.train --epochs 40 --w-reg 2.0 --w-cls 1.0
 python -m benchmark.evaluate_subsystems --out results/subsystems_benchmark.json

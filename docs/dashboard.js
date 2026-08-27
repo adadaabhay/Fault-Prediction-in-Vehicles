@@ -40,6 +40,51 @@ function isSyntheticChannel(key) {
 }
 
 /* ---------------- parameter value helpers ---------------- */
+
+/* Dynamic chip-flip hook for the REMEDIATION ROUND 1 bar.
+ *
+ * The retrain chip starts as "pending" in the HTML so a slow network
+ * cannot show a falsely-green chip.  Once ``init()`` has loaded both
+ * ``config.json`` and ``model.json`` (or failed to), this function
+ * re-fetches them with ``cache: no-store`` and flips the chip to one
+ * of three states:
+ *
+ *   - ``ok``      : both 200, weights are present
+ *   - ``pending`` : exactly one 404 (one artifact regenerated, the
+ *                   other not yet); operator should re-run training
+ *   - ``error``   : both 404 (or both threw); the page cannot run the
+ *                   LSTM in the browser
+ *
+ * The chip is identified by id ``chip_retrain`` so a future round can
+ * add more dynamic chips without re-engineering this hook.
+ */
+async function verifyArtifacts() {
+  const chip = $("chip_retrain");
+  if (!chip) return;
+  async function probe(url) {
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      return r.ok;
+    } catch (_) { return false; }
+  }
+  const [cfgOk, mdlOk] = await Promise.all([probe("config.json"), probe("model.json")]);
+  chip.classList.remove("ok", "pending", "error");
+  if (cfgOk && mdlOk) {
+    chip.classList.add("ok");
+    chip.textContent = "MODEL RETRAIN COMPLETE";
+    chip.title = "config.json and model.json both 200; LSTM weights present.";
+  } else if (!cfgOk && !mdlOk) {
+    chip.classList.add("error");
+    chip.textContent = "ARTIFACTS UNREACHABLE";
+    chip.title = "config.json and model.json both 404. Run \`python -m ml.train\` and refresh.";
+  } else {
+    chip.classList.add("pending");
+    chip.textContent = "MODEL RETRAIN PENDING";
+    const missing = !cfgOk ? "config.json" : "model.json";
+    chip.title = `${missing} returned 404. Run \`python -m ml.train\` and refresh.`;
+  }
+}
+
 function scaledValue(param, raw) {
   return (param.scale !== undefined) ? raw * param.scale : raw;
 }
@@ -780,6 +825,11 @@ async function init() {
     `<span class="chip">&#9889; ${f.replace(/_/g, " ")}</span>`).join("");
 
   renderProvenance(LiveFeed.stream);
+  // After everything else is wired, re-probe the artifacts with a
+  // cache-busting fetch and flip the retrain chip to its real state.
+  // This runs *after* the rest of init() so the chip cannot falsely
+  // report "ok" before the page has actually consumed the artifacts.
+  await verifyArtifacts();
   $("modelInfo").textContent =
     `LSTM · ${model.H} hidden units · input window ${config.window}×${config.input_features.length} · ` +
     `RUL cap ${config.rul_cap_steps} steps · trained offline on physics-simulated scenarios, inference runs live in-browser`;
@@ -830,4 +880,10 @@ async function init() {
   LiveSocket.connect();
 }
 
-init();
+init().catch(err => {
+  console.error("dashboard init failed:", err);
+  // Even on init failure, run the chip-flip hook so the operator sees
+  // an honest "pending" / "error" chip rather than a permanent amber
+  // "verifying…" tooltip.
+  verifyArtifacts().catch(() => {});
+});
