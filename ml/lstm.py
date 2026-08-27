@@ -91,8 +91,12 @@ class LSTMModel:
             g[k] = np.zeros_like(self.p[k])
 
         # d/d_reg of w_reg * mean((reg - y)^2) is 2*w_reg/R * (reg - y).
+        # The sigmoid derivative reg*(1-reg) was a leftover from a previous
+        # loss that mixed MSE and BCE; it is not part of the current objective
+        # and silently mis-weighted the regression head. Kept the comment as
+        # the contract; the code now matches it.
         reg_scale = 2.0 * w_reg / max(self.R, 1)
-        d_reg = reg_scale * (cache["reg"] - y_reg) * cache["reg"] * (1 - cache["reg"])
+        d_reg = reg_scale * (cache["reg"] - y_reg)
         g["Wy"] += np.outer(cache["h_final"], d_reg)
         g["by"] += d_reg
 

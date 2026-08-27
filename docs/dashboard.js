@@ -360,6 +360,30 @@ function updateOverall(rec, reg, cls, overallHealth) {
   const vrEl = $("v_vibrms");
   vrEl.textContent = rec.vib_rms.toFixed(2);
   vrEl.className = "digital small " + (rec.vib_rms > 1.2 ? "crit" : (rec.vib_rms > 0.75 ? "warn" : ""));
+  /* Two new vitals (added in audit-remediation round 1, schema D=24 → 26):
+     coolant level (%) and exhaust pressure (bar).  Thresholds mirror
+     ml/parts.py: warn_lo=55 / crit_lo=35 for coolant level,
+     warn_hi=2.2 / crit_hi=2.6 for exhaust pressure. */
+  const clEl = $("v_coolantlvl");
+  if (rec.coolant_level != null) {
+    const cl = rec.coolant_level * 100;
+    clEl.textContent = cl.toFixed(0) + "%";
+    clEl.className = "digital small " +
+      (cl < 35 ? "crit" : (cl < 55 ? "warn" : ""));
+  } else {
+    clEl.textContent = "--";
+    clEl.className = "digital small";
+  }
+  const epEl = $("v_exhaustp");
+  if (rec.exhaust_pressure != null) {
+    const ep = rec.exhaust_pressure * 1e-5;
+    epEl.textContent = ep.toFixed(2) + " bar";
+    epEl.className = "digital small " +
+      (ep > 2.6 ? "crit" : (ep > 2.2 ? "warn" : ""));
+  } else {
+    epEl.textContent = "--";
+    epEl.className = "digital small";
+  }
 
   /* Guarded: a stream whose health arrays are shorter than its records (or
    * missing a part entirely) previously produced NaN here, and every

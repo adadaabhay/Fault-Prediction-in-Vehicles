@@ -103,9 +103,12 @@ PARTS = {
             {"key": "hyd_pressure", "label": "Circuit Pressure", "unit": "bar",
              "min": 0, "max": 300, "warn_lo": 140, "crit_lo": 90,
              "healthy": 210, "scale": 1e-5},
+            # Actuator force is read from the joystick / servo loop, not the
+            # LSTM input schema. The simulator does not produce it; the HUD
+            # can show a placeholder until a real sensor stream is wired in.
             {"key": "hyd_force", "label": "Actuator Force", "unit": "kN",
              "min": 0, "max": 6, "warn_lo": 2.9, "crit_lo": 2.0,
-             "healthy": 4.2, "scale": 1e-3},
+             "healthy": 4.2, "scale": 1e-3, "health_exclude": True},
             {"key": "hyd_leak_flow", "label": "Seal Leak Flow", "unit": "L/s",
              "min": 0, "max": 0.08, "warn_hi": 0.025, "crit_hi": 0.045,
              "healthy": 0.0087, "scale": 1000, "decimals": 4},
@@ -154,12 +157,16 @@ PARTS = {
     "nbc": {
         "label": "NBC Protection",
         "params": [
+            # NBC channels are display-only. The simulator does not produce
+            # them (no NBC plant model in the synthetic suite) so they cannot
+            # be LSTM inputs; the health index stays at 100 until real
+            # sensors feed the gateway.
             {"key": "nbc_overpressure", "label": "Overpressure", "unit": "Pa",
              "min": 0, "max": 600, "warn_lo": 150, "crit_lo": 50,
-             "healthy": 300},
+             "healthy": 300, "health_exclude": True},
             {"key": "nbc_filter_dp", "label": "Filter dp", "unit": "Pa",
              "min": 0, "max": 2000, "warn_hi": 1500, "crit_hi": 1800,
-             "healthy": 500},
+             "healthy": 500, "health_exclude": True},
         ],
         "gauge": "nbc_overpressure",
         "alarm_key": "nbc_overpressure",
@@ -167,12 +174,18 @@ PARTS = {
     "exhaust": {
         "label": "Exhaust",
         "params": [
+            # Exhaust-aftertreatment channels are display-only: the LSTM
+            # already sees ``exhaust_pressure`` (in cooling) and
+            # ``exhaust_temp`` (in engine), which is what the regression
+            # head actually needs. The aftertreatment-specific sensors
+            # belong to a future Pi-Plus / DPFsensor extension.
             {"key": "exhaust_backpressure", "label": "Backpressure", "unit": "kPa",
              "min": 100, "max": 200, "warn_hi": 140, "crit_hi": 160,
-             "healthy": 110, "scale": 0.001, "decimals": 1},
+             "healthy": 110, "scale": 0.001, "decimals": 1,
+             "health_exclude": True},
             {"key": "particulate_index", "label": "Particulates", "unit": "%",
              "min": 0, "max": 100, "warn_hi": 70, "crit_hi": 90,
-             "healthy": 15},
+             "healthy": 15, "health_exclude": True},
         ],
         "gauge": "exhaust_backpressure",
         "alarm_key": "particulate_index",
@@ -183,9 +196,13 @@ PARTS = {
             {"key": "ae_event_rate", "label": "AE Events", "unit": "Hz",
              "min": 0, "max": 50, "warn_hi": 25, "crit_hi": 40,
              "healthy": 2},
+            # Burst energy is the integrated AE pulse; the LSTM input
+            # schema already carries ``ae_energy`` in structure.  Marking
+            # this display-only keeps the schema honest about which
+            # channels the model can see.
             {"key": "ae_burst_energy", "label": "Burst Energy", "unit": "J",
              "min": 0, "max": 1000, "warn_hi": 400, "crit_hi": 700,
-             "healthy": 50},
+             "healthy": 50, "health_exclude": True},
         ],
         "gauge": "ae_event_rate",
         "alarm_key": "ae_event_rate",
@@ -212,6 +229,9 @@ PART_ORDER = ["engine", "powertrain", "lubrication", "cooling",
               "hydraulics", "suspension", "structure", "nbc", "exhaust", "acoustics", "overall"]
 
 # LSTM input features (normalised 0-1) spanning all subsystems.
+# Order is significant: it is the order of slots the LSTM, the C engine and
+# the browser inference all read.  Append new channels at the end so existing
+# index-based references keep resolving.
 INPUT_FEATURES = [
     "coolant_temp", "oil_temp", "exhaust_temp", "oil_pressure",
     "oil_viscosity", "debris_rate", "debris_cumulative", "shaft_torque",
@@ -219,6 +239,7 @@ INPUT_FEATURES = [
     "susp_strain_ue", "torsion_twist_deg", "torsion_cumulative_twist",
     "shock_a_rms_g", "spl_db", "ae_event_rate", "ae_energy", "vib_rms",
     "vib_kurtosis", "vib_dom_amp", "susp_compliance", "driveline_efficiency",
+    "coolant_level", "exhaust_pressure",
 ]
 
 # Failure threshold for per-part health index (RUL = time to cross it).

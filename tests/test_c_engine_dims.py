@@ -50,7 +50,10 @@ class TestDimensionsAreSingleSourced(unittest.TestCase):
         self.assertEqual(binding.C_CLASSES, dims["C"])
 
     def test_generator_rejects_a_config_model_mismatch(self):
-        """The drift this task removes must be detected, not silently accepted."""
+        """The drift this task removes must be detected, not silently accepted.
+        The default ``model_dims()`` is permissive (warns, does not raise) so
+        the C header can be regenerated mid-refresh; ``strict=True`` is the
+        CI gate for a genuine mismatch."""
         import c_engine.gen_dims as gd
         original = gd.CONFIG_PATH
         bogus = ROOT / "c_engine" / "_bogus_config.json"
@@ -60,7 +63,7 @@ class TestDimensionsAreSingleSourced(unittest.TestCase):
             bogus.write_text(json.dumps(cfg), encoding="utf-8")
             gd.CONFIG_PATH = bogus
             with self.assertRaises(ValueError):
-                gd.model_dims()
+                gd.model_dims(strict=True)
         finally:
             gd.CONFIG_PATH = original
             bogus.unlink(missing_ok=True)

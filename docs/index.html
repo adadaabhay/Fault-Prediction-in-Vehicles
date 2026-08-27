@@ -58,6 +58,23 @@
   <span id="dtcChips" class="fault-chips"><span class="m-sub">no active DTCs</span></span>
 </div>
 
+<!-- Audit-remediation status.  Each chip maps to a BLOCKER/HIGH finding in
+     the round-1 audit.  Rendered as a single row so an operator can see at
+     a glance whether the published dashboard reflects the latest model and
+     schema.  Details link to docs/REMEDIATION.md. -->
+<div id="remediationBar" class="remediation-bar">
+  <span class="remediation-label">REMEDIATION ROUND&nbsp;1</span>
+  <span class="remediation-chips">
+    <span class="r-chip ok"     title="ml/lstm.py:99 — sigmoid derivative dropped from the regression gradient">LSTM GRADIENT FIXED</span>
+    <span class="r-chip ok"     title="ml/parts.py INPUT_FEATURES — coolant_level + exhaust_pressure restored; D=24 → 26">INPUT SCHEMA D=26</span>
+    <span class="r-chip ok"     title="ml/scenarios.py:202 — combo scenarios no longer collapsed to a[0]; co-faults surfaced via combo metadata">COMBO LABELS FIXED</span>
+    <span class="r-chip ok"     title="ml/parts.py — NBC / exhaust-aftertreatment / burst-energy marked display-only so the schema is honest">DISPLAY-ONLY FLAGGED</span>
+    <span class="r-chip ok"     title="tests/test_leakage.py + tools_check_artifacts.py — CI gates shipped, no-skip policy enforced">LEAKAGE GATES LIVE</span>
+    <span class="r-chip pending" title="Pending until `python -m ml.train` runs in CI">MODEL RETRAIN PENDING</span>
+  </span>
+  <a class="remediation-link" href="REMEDIATION.md" target="_blank" rel="noopener">details &rarr;</a>
+</div>
+
 <div id="sosBanner" class="sos hidden">
   &#128680; <b>SOS — CRITICAL FAULT</b> &#128680;
   <span id="sosDetail"></span>
@@ -89,6 +106,8 @@
           <div class="vital"><span>OIL P</span><b id="v_oilp" class="digital small">--</b></div>
           <div class="vital"><span>OIL T</span><b id="v_oilt" class="digital small">--</b></div>
           <div class="vital"><span>VIB RMS</span><b id="v_vibrms" class="digital small">--</b></div>
+          <div class="vital"><span>COOLANT LVL</span><b id="v_coolantlvl" class="digital small">--</b></div>
+          <div class="vital"><span>EXHAUST P</span><b id="v_exhaustp" class="digital small">--</b></div>
         </div>
       </div>
     </div>

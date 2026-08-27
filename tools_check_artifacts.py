@@ -19,6 +19,19 @@ from pathlib import Path
 
 DOCS = Path(__file__).resolve().parent / "docs"
 
+# Authoritative targets.  These come from the Python schema
+# (``ml.parts.INPUT_FEATURES``, ``ml.parts.PART_ORDER``) and the declared
+# fault taxonomy (``ml.scenarios.ALL_FAULTS``).  Read them here so a future
+# retrain that reverts the schema cannot silently re-ship D=24.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ml.parts import INPUT_FEATURES, PART_ORDER  # noqa: E402
+from ml.scenarios import ALL_FAULTS  # noqa: E402
+
+EXPECTED_D = len(INPUT_FEATURES)
+EXPECTED_R = len(PART_ORDER)
+EXPECTED_C = 1 + len(ALL_FAULTS)   # healthy + 12 declared fault classes
+EXPECTED_H = 24                     # LSTM hidden size (training-time choice)
+
 
 def main() -> int:
     cfg = json.loads((DOCS / "config.json").read_text(encoding="utf-8"))
@@ -28,6 +41,18 @@ def main() -> int:
     feats = cfg["input_features"]
     errs: list[str] = []
 
+    # --- C-engine / model / schema agreement -----------------------------
+    if mdl["D"] != EXPECTED_D:
+        errs.append(f"model D={mdl['D']} != schema D={EXPECTED_D}; retrain "
+                    f"(`python -m ml.train`) to reconcile")
+    if mdl["R"] != EXPECTED_R:
+        errs.append(f"model R={mdl['R']} != schema R={EXPECTED_R}")
+    if mdl["C"] != EXPECTED_C:
+        errs.append(f"model C={mdl['C']} != schema C={EXPECTED_C} "
+                    f"(healthy + {len(ALL_FAULTS)} declared faults)")
+    if mdl["H"] != EXPECTED_H:
+        errs.append(f"model H={mdl['H']} != expected H={EXPECTED_H}")
+
     if mdl["D"] != len(feats):
         errs.append(f"model D={mdl['D']} but config lists {len(feats)} features")
     if mdl["C"] != len(cfg["class_names"]):
@@ -35,6 +60,14 @@ def main() -> int:
     if mdl["R"] != len(cfg["part_order"]):
         errs.append(f"model R={mdl['R']} but {len(cfg['part_order'])} parts")
 
+    # Weight matrices must have the leading dim the header advertises.
+    for gate in ("Wf", "Wi", "Wc", "Wo"):
+        rows = len(mdl["params"][gate])
+        if rows != EXPECTED_D:
+            errs.append(f"weight matrix {gate} has {rows} input rows but "
+                        f"D={EXPECTED_D} is required")
+
+    # --- stream + scaler coverage ----------------------------------------
     records = stream.get("records") or []
     if not records:
         errs.append("live_stream.json has no records")

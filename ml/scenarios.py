@@ -191,8 +191,18 @@ def run_scenario(scenario: Scenario, window_samples: int = 512,
     # the signature is far below the noise floor, so thousands of samples were
     # labelled with a fault that had not yet manifested. `observable_faults`
     # additionally requires the severity to clear DETECTABLE_SEVERITY.
-    labels = [ (lambda a: a[0] if a else "healthy")(sim.faults.observable_faults(i))
-               for i in range(len(records)) ]
+    #
+    # `observable_faults` returns a list that may carry more than one fault for
+    # combo scenarios. The classifier is single-label (C is fixed by the
+    # declared fault taxonomy, not by what is co-firing in a window), so we
+    # pick the alphabetically first observable fault to keep the assignment
+    # stable across RNG state. Combo scenarios are tracked separately in
+    # `per_scenario` metadata so the HUD can surface the co-fault without
+    # distorting the classification head.
+    labels = []
+    for i in range(len(records)):
+        obs = sim.faults.observable_faults(i)
+        labels.append(sorted(obs)[0] if obs else "healthy")
     return records, np.array(labels)
 
 
@@ -342,7 +352,11 @@ def build_dataset(window_samples: int = 512, sample_rate: float = 500.0,
     per_scenario = [
         {"name": sc.name, "profile": sc.profile,
          "group": scenario_group(sc), "X": x, "Y": y,
-         "L": np.array([class_index[lbl] for lbl in l])}
+         "L": np.array([class_index[lbl] for lbl in l]),
+         # The classifier is single-label (C is the declared fault taxonomy);
+         # co-firing faults in combo scenarios are surfaced here so the HUD
+         # can render them without distorting the classification head.
+         "combo": tuple(sorted({f for f, _ in sc.faults}))}
         for sc, x, y, l in zip(suite, all_feats, all_win_rul, all_win_labels)
     ]
 

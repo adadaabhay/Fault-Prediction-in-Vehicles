@@ -73,12 +73,13 @@ The Prognostics & Health Management (PHM/CBM+) ecosystem connects physical/simul
 | 13 | HUD Live Hardware Stream Badge | `LiveSocket` in `live.js` + `#sourceBadge`: LIVE HARDWARE STREAM / CONNECTING / STALLED / REPLAY, with a frame counter and FDIR latency | M4 | ORIGINAL_REQUEST §R1 & AC6 |
 | 14 | Automatic Watchdog Fallback | 2.0 s watchdog in `LiveSocket` plus exponential-backoff reconnect; falls back to the recorded mission and logs the transition | M4 | ORIGINAL_REQUEST §R1 |
 | 15 | HUD J1939 Diagnostic Display | `renderDTCs()` renders active DM1 SPN/FMI chips coloured by lamp status | M4 | ORIGINAL_REQUEST §R3 |
-| 16 | Defensive Input Clamping | Present in `dashboard.js`; DTC text uses `textContent`, never `innerHTML`. **Not covered by a browser test** — "zero console errors" is asserted, not measured. | M4 | ORIGINAL_REQUEST §AC2, AC6 |
-| 17 | Verification Suite | 34 modules under `tests/` passing across unit, integration, and parity gates | M4 | ORIGINAL_REQUEST §AC4, AC5 |
+| 16 | Defensive Input Clamping | Present in `dashboard.js`; DTC text uses `textContent`, never `innerHTML`. Browser-side numerical agreement with the Python forward pass is asserted by `tests/test_js_python_parity.py` (1e-9 tolerance). | M4 | ORIGINAL_REQUEST §AC2, AC6 |
+| 17 | Verification Suite | 35 modules under `tests/` passing across unit, integration, and parity gates (label integrity, schema/leakage, JS↔Python parity, C↔Python parity) | M4 | ORIGINAL_REQUEST §AC4, AC5 |
 | 18 | PHM Pipeline Composition | `telemetry_gateway/pipeline.py` — FDIR gate → health assessment → LSTM prognostics → DTC generation, per frame | M5 | audit remediation |
 | 19 | Ingest Access Control | API key, per-client token bucket, payload cap, WebSocket origin check | M5 | audit remediation |
 | 20 | Unit Contract | `telemetry_gateway/units.py` — SI ↔ engineering, round-trip and envelope tested | M5 | audit remediation |
-| 21 | Label-Leakage Guards | `tests/test_leakage.py` — no channel may be a readback of an injected fault parameter | M5 | audit remediation |
+| 21 | Label-Leakage Guards | `tests/test_leakage.py` — schema coverage, label-defining channels, C-header / model / config agreement; CI fails on skip. | M5 | audit remediation |
+| 22 | Remediation Round 1 (LSTM gradient, schema D=24→26, combo labels, display-only discipline) | See `docs/REMEDIATION.md`. The `REMEDIATION ROUND 1` bar in the HUD surfaces each fix as a chip; the `MODEL RETRAIN PENDING` chip flips to green when the artifact gate is clean. | M5 | audit remediation |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
@@ -87,7 +88,7 @@ The Prognostics & Health Management (PHM/CBM+) ecosystem connects physical/simul
 | M2 | Adversarial Sensor Fuzzing & Plausibility Gate (FDIR) | `telemetry_gateway/sensor_plausibility.py`, 6-layer filter, open/short clamping, rate limiters, dual-sensor checks | None | DONE |
 | M3 | SAE J1939-73 DM1 & DM2 Diagnostic Trouble Code Engine | `telemetry_gateway/dtc_engine.py`, SPN/FMI mapping, DM1/DM2 encoders, flash ring buffer storage | M2 | DONE |
 | M4 | Frontend HUD Live Integration & Verification Suite | `Fault-Prediction-in-Vehicles/docs/` (`live.js`, `dashboard.js`, `index.html`, `style.css`) and the suites under `tests/` | M1, M2, M3 | DONE |
-| M5 | Audit Remediation | Label-leakage removal, pipeline composition, ingest access control, unit contract, J1939-71 conformance, EGT / thermostat / diesel-λ physics, grouped three-way ML split, edge-runtime fail-safe | M1–M4 | DONE |
+| M5 | Audit Remediation | Label-leakage removal, pipeline composition, ingest access control, unit contract, J1939-71 conformance, EGT / thermostat / diesel-λ physics, grouped three-way ML split, edge-runtime fail-safe, LSTM backward-gradient fix, input schema D=24→26, combo label determinism, display-only discipline | M1–M4 | DONE |
 
 ## Interface Contracts
 

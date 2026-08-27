@@ -131,3 +131,17 @@ The model input vector is fixed-width, so absent channels need a value. They are
 enumerated so the dashboard renders them as `n/a` rather than presenting a
 scaler midpoint as if it were a reading. An engine dyno genuinely has no
 suspension strain channel; the fix is to say so, not to invent one.
+
+### Channel-provenance caveats added in audit-remediation round 1
+
+- **`coolant_level` and `exhaust_pressure`** are new LSTM inputs (D=24 → D=26).
+  Both are sourced from the physics simulator only — no public corpus
+  supplies a fault-labelled cooling-level or exhaust-pressure stream. Their
+  thresholds in `ml/parts.py` are anchored to typical diesel-engine figures,
+  not to labelled real-vehicle failures, and any field deployment should
+  treat the readouts as advisory until a coolant-level sender and an
+  exhaust-manifold pressure transducer are added to the gateway.
+- **NBC, exhaust-aftertreatment and acoustics (`ae_burst_energy`)** channels
+  are marked `health_exclude` in `ml/parts.py` because the synthetic suite
+  does not produce them. The health index for those subsystems therefore
+  reads 100 by construction; this is documented, not a silent fallback.

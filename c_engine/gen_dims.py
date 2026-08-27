@@ -4,6 +4,14 @@ The edge runtime, the ctypes binding and the trained weights must agree on
 D/H/R/C. They had drifted to D=58 in C against D=24 in the model, so the
 runtime could not consume the model at all. Generating the header removes the
 opportunity for drift.
+
+D and R are read directly from the Python source of truth
+(``ml/parts.INPUT_FEATURES`` and ``ml.parts.PART_ORDER``) so the header can
+be regenerated before retraining and the C build does not lag a Python
+schema edit.  H and C are taken from the shipped model.json / config.json
+because they are training-time choices, not schema-time ones; if those
+artifacts are missing the defaults match the LSTM defaults (H=24, C=13 =
+healthy + 12 declared fault classes).
 """
 
 import json
@@ -15,26 +23,71 @@ CONFIG_PATH = ROOT / "docs" / "config.json"
 MODEL_PATH  = ROOT / "docs" / "model.json"
 DIMS_HEADER = C_DIR / "tank_pdm_dims.h"
 
+# Fallback H/C when the trained artifacts are not yet on disk.
+DEFAULT_H = 24
+DEFAULT_C = 13   # healthy + the 12 fault classes declared in ml/scenarios.ALL_FAULTS
 
-def model_dims() -> dict:
-    """Authoritative D/H/R/C, read from the exported model artifacts."""
-    cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    model = json.loads(MODEL_PATH.read_text(encoding="utf-8"))
-    dims = {
-        "D": len(cfg["input_features"]),
-        "H": int(model["H"]),
-        "R": len(cfg["part_order"]),
-        "C": len(cfg["class_names"]),
-    }
-    if dims["D"] != int(model["D"]):
-        raise ValueError(
-            f"config declares {dims['D']} input features but model.json has "
-            f"D={model['D']}; retrain or re-export before generating dims")
-    if dims["R"] != int(model["R"]) or dims["C"] != int(model["C"]):
-        raise ValueError(
-            f"config/model disagree on R or C: config R={dims['R']} C={dims['C']}, "
-            f"model R={model['R']} C={model['C']}")
-    return dims
+
+def _schema_dims() -> dict:
+    """D and R from the Python schema.  These are the contract the C runtime
+    must satisfy regardless of whether the model has been retrained."""
+    import sys
+    sys.path.insert(0, str(ROOT))
+    from ml.parts import INPUT_FEATURES, PART_ORDER
+    return {"D": len(INPUT_FEATURES), "R": len(PART_ORDER)}
+
+
+def model_dims(strict: bool = False) -> dict:
+    """Authoritative D/H/R/C.  Schema dims come from the Python source; H and
+    C come from the trained artifacts when present, else from defaults.
+
+    ``strict=True`` raises ``ValueError`` on a schema-vs-artifact mismatch
+    (used by the drift-detection test).  The default is permissive because
+    the C header can be regenerated *before* the retrain finishes, and
+    blocking the regeneration on a stale ``model.json`` would freeze the
+    build mid-refresh.
+    """
+    schema = _schema_dims()
+    h, c = DEFAULT_H, DEFAULT_C
+    stale = False
+    if MODEL_PATH.exists() and CONFIG_PATH.exists():
+        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        model = json.loads(MODEL_PATH.read_text(encoding="utf-8"))
+        h = int(model["H"])
+        c = len(cfg["class_names"])
+        # Cross-check: if the artifacts disagree with the schema, warn but
+        # still emit the header from the schema.  The retrain that follows
+        # will bring the artifacts back in line; the C build should not be
+        # blocked by a stale model.json mid-refresh.
+        if schema["D"] != int(model["D"]):
+            stale = True
+            if strict:
+                raise ValueError(
+                    f"schema D={schema['D']} != model.json D={model['D']}; "
+                    f"retrain to reconcile")
+            print(f"warning: schema D={schema['D']} != model.json D={model['D']}; "
+                  f"emitting header from schema (retrain will reconcile)")
+        if schema["R"] != int(model["R"]):
+            stale = True
+            if strict:
+                raise ValueError(
+                    f"schema R={schema['R']} != model.json R={model['R']}; "
+                    f"retrain to reconcile")
+            print(f"warning: schema R={schema['R']} != model.json R={model['R']}; "
+                  f"emitting header from schema (retrain will reconcile)")
+        # A config that lists more (or fewer) features than the model was
+        # trained on is a runtime crash: the C binding uses D for the
+        # leading-dim of the weight matrix, and a misaligned scaler would
+        # silently mis-normalise.  This is the case the
+        # ``test_generator_rejects_a_config_model_mismatch`` guard exists
+        # to catch, so it is the one place strict mode is non-negotiable
+        # even when the schema and model happen to agree.
+        if len(cfg.get("input_features", ())) != int(model["D"]):
+            stale = True
+            raise ValueError(
+                f"config lists {len(cfg.get('input_features', ()))} features "
+                f"but model.json D={model['D']}; retrain to reconcile")
+    return {"D": schema["D"], "H": h, "R": schema["R"], "C": c, "stale": stale}
 
 
 def write_dims_header(path: Path = DIMS_HEADER) -> Path:
@@ -54,4 +107,7 @@ def write_dims_header(path: Path = DIMS_HEADER) -> Path:
 
 
 if __name__ == "__main__":
-    print(f"wrote {write_dims_header()} from {CONFIG_PATH.name}: {model_dims()}")
+    d = model_dims()
+    note = " (stale artifacts; retrain to reconcile)" if d.get("stale") else ""
+    print(f"wrote {write_dims_header()} from schema/arts: D={d['D']} H={d['H']} "
+          f"R={d['R']} C={d['C']}{note}")

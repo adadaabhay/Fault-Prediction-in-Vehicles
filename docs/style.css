@@ -300,3 +300,57 @@ footer.credits { justify-content: center; border-top: none; margin-top: 0; paddi
 }
 .chip.dtc.degraded { border-color: #d8a11a; color: #f0c651; }
 .chip.dtc.sos      { border-color: #c0392b; color: #ff6b5a; }
+
+/* --- Audit remediation status bar --------------------------------------
+   Single-row visual contract for the round-1 audit fixes.  Each chip maps
+   to a finding; the green "ok" tone matches the existing healthy-status
+   palette so the bar reads as part of the same HUD rather than a
+   developer-only banner.  The amber "pending" chip is the retrain, which
+   the operator must see as not-yet-done. */
+.remediation-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.5rem 1rem;
+  background: #0a1610;
+  border-top: 1px solid rgba(41, 208, 113, 0.18);
+  border-bottom: 1px solid rgba(41, 208, 113, 0.18);
+  font-size: 0.78rem;
+}
+.remediation-label {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #29d071;
+}
+.remediation-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 1 1 auto;
+}
+.r-chip {
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: #cbd5d0;
+  background: transparent;
+}
+.r-chip.ok {
+  border-color: rgba(41, 208, 113, 0.5);
+  color: #29d071;
+  background: rgba(41, 208, 113, 0.07);
+}
+.r-chip.pending {
+  border-color: rgba(216, 161, 26, 0.6);
+  color: #f0c651;
+  background: rgba(216, 161, 26, 0.08);
+}
+.remediation-link {
+  color: #6ab8f0;
+  text-decoration: none;
+  font-size: 0.78rem;
+}
+.remediation-link:hover { text-decoration: underline; }
