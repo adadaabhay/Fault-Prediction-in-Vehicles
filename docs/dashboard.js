@@ -84,6 +84,7 @@ async function verifyArtifacts() {
     } catch (_) { return "http"; }
   }
   const [cfgR, mdlR] = await Promise.all([probe("config.json"), probe("model.json")]);
+  chip.dataset.probed = "1";  // sync sentinel: test gate waits on this
   chip.classList.remove("ok", "pending", "error");
   // Parse failures are always error, never pending -- a 200 with a
   // broken body is a build defect, not a mid-deploy state.
@@ -923,6 +924,7 @@ init().catch(err => {
   }
   chip.classList.remove("ok", "pending");
   chip.classList.add("error");
+  chip.dataset.probed = "1";  // sync sentinel: test gate waits on this
   chip.textContent = "PAGE INIT FAILED";
   chip.title = `dashboard init() rejected: ${err && err.message ? err.message : err}. `
              + "Open the browser console for the full trace; do not trust the readouts.";

@@ -153,16 +153,22 @@ class TestHudSmoke(unittest.TestCase):
         self._console_errors.clear()
 
     def _goto(self):
-        # ``wait_until="load"`` is enough; the chip-class poll below
+        # ``wait_until="load"`` is enough; the sentinel poll below
         # covers the async init() completion.  ``networkidle`` interacts
         # badly with the long-lived LiveSocket WebSocket and is
         # environment-dependent.
         self._page.goto(self.url, wait_until="load")
-        # The chip must leave its initial ``pending`` class within a
-        # reasonable bound; both artifact probes are local.
+        # Wait on the ``data-probed`` sentinel that verifyArtifacts() (or
+        # the init().catch handler) sets once it has decided the chip's
+        # terminal state.  Waiting on the negation of the ``pending``
+        # class is a bug: the chip starts in ``pending`` AND the
+        # pending terminal state is also ``pending``, so a test that
+        # drives the chip into the pending branch via ``page.route``
+        # will time out instead of asserting.  The sentinel is set
+        # exactly once and is independent of the terminal class.
         self._page.wait_for_function(
             "() => { const c = document.getElementById('chip_retrain'); "
-            "return c && !c.classList.contains('pending'); }",
+            "return c && c.dataset.probed === '1'; }",
             timeout=10000,
         )
 

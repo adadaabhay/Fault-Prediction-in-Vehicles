@@ -19,6 +19,7 @@
 const states = [];
 const chip = {
   classList: { _set: new Set(), add(c) { this._set.add(c); }, remove(...cs) { cs.forEach(c => this._set.delete(c)); }, contains(c) { return this._set.has(c); } },
+  dataset: { probed: undefined },
   textContent: "",
   title: "",
 };
@@ -46,6 +47,7 @@ async function verifyArtifacts(probe) {
     } catch (_) { return "http"; }
   }
   const [cfgR, mdlR] = await Promise.all([p("config.json"), p("model.json")]);
+  chip.dataset.probed = "1";  // sync sentinel
   chip.classList.remove("ok", "pending", "error");
   const anyParse = (cfgR === "parse" || mdlR === "parse");
   if (cfgR === "ok" && mdlR === "ok") {
@@ -68,56 +70,58 @@ function assertEq(actual, expected, label) {
   console.log(`  ok  ${label}: ${JSON.stringify(actual)}`);
 }
 
+function resetChip() {
+  chip.classList = { _set: new Set(), add(c){this._set.add(c);}, remove(...cs){cs.forEach(c=>this._set.delete(c));}, contains(c){return this._set.has(c);} };
+  chip.dataset = { probed: undefined };
+  chip.textContent = ""; chip.title = "";
+}
+
 (async () => {
   // 1. both 2xx+JSON
-  chip.classList = { _set: new Set(), add(c){this._set.add(c);}, remove(...cs){cs.forEach(c=>this._set.delete(c));}, contains(c){return this._set.has(c);} };
-  chip.textContent = ""; chip.title = "";
+  resetChip();
   await verifyArtifacts(makeFetch({
     "config.json": { status: 200, body: '{"window":24}' },
     "model.json":  { status: 200, body: '{"D":26,"H":24}' },
   }));
-  assertEq(chip.textContent, "MODEL RETRAIN COMPLETE", "1.both_2xx");
-  assertEq(chip.classList.contains("ok"), true,         "1.both_2xx.class");
+  assertEq(chip.dataset.probed,    "1",            "1.both_2xx.sentinel");
+  assertEq(chip.textContent,       "MODEL RETRAIN COMPLETE", "1.both_2xx");
+  assertEq(chip.classList.contains("ok"), true,   "1.both_2xx.class");
 
   // 2. both 4xx
-  chip.classList = { _set: new Set(), add(c){this._set.add(c);}, remove(...cs){cs.forEach(c=>this._set.delete(c));}, contains(c){return this._set.has(c);} };
-  chip.textContent = ""; chip.title = "";
+  resetChip();
   await verifyArtifacts(makeFetch({
     "config.json": { status: 404, body: "not found" },
     "model.json":  { status: 404, body: "not found" },
   }));
   assertEq(chip.textContent, "ARTIFACTS UNREACHABLE", "2.both_404");
-  assertEq(chip.classList.contains("error"), true,     "2.both_404.class");
+  assertEq(chip.classList.contains("error"), true,   "2.both_404.class");
 
   // 3. one 4xx
-  chip.classList = { _set: new Set(), add(c){this._set.add(c);}, remove(...cs){cs.forEach(c=>this._set.delete(c));}, contains(c){return this._set.has(c);} };
-  chip.textContent = ""; chip.title = "";
+  resetChip();
   await verifyArtifacts(makeFetch({
     "config.json": { status: 200, body: '{"window":24}' },
     "model.json":  { status: 404, body: "not found" },
   }));
   assertEq(chip.textContent, "MODEL RETRAIN PENDING", "3.one_404");
-  assertEq(chip.classList.contains("pending"), true,  "3.one_404.class");
+  assertEq(chip.classList.contains("pending"), true, "3.one_404.class");
 
   // 4. one 2xx+garbage (the C1 fix and the SFH #2 fix together)
-  chip.classList = { _set: new Set(), add(c){this._set.add(c);}, remove(...cs){cs.forEach(c=>this._set.delete(c));}, contains(c){return this._set.has(c);} };
-  chip.textContent = ""; chip.title = "";
+  resetChip();
   await verifyArtifacts(makeFetch({
     "config.json": { status: 200, body: '{"window":24}' },
     "model.json":  { status: 200, body: "<html>oops</html>" },
   }));
   assertEq(chip.textContent, "ARTIFACTS UNREACHABLE", "4.one_garbage");
-  assertEq(chip.classList.contains("error"), true,     "4.one_garbage.class");
+  assertEq(chip.classList.contains("error"), true,   "4.one_garbage.class");
 
   // 5. both 2xx+garbage
-  chip.classList = { _set: new Set(), add(c){this._set.add(c);}, remove(...cs){cs.forEach(c=>this._set.delete(c));}, contains(c){return this._set.has(c);} };
-  chip.textContent = ""; chip.title = "";
+  resetChip();
   await verifyArtifacts(makeFetch({
     "config.json": { status: 200, body: "{ not json" },
     "model.json":  { status: 200, body: "[]" },
   }));
   assertEq(chip.textContent, "ARTIFACTS UNREACHABLE", "5.both_garbage");
-  assertEq(chip.classList.contains("error"), true,     "5.both_garbage.class");
+  assertEq(chip.classList.contains("error"), true,   "5.both_garbage.class");
 
   console.log("all 5 state-machine checks passed");
 })();
