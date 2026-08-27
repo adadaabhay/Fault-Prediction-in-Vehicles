@@ -49,11 +49,16 @@ function isSyntheticChannel(key) {
  * re-fetches them with ``cache: no-store`` and flips the chip to one
  * of three states:
  *
- *   - ``ok``      : both 200, weights are present
- *   - ``pending`` : exactly one 404 (one artifact regenerated, the
- *                   other not yet); operator should re-run training
- *   - ``error``   : both 404 (or both threw); the page cannot run the
- *                   LSTM in the browser
+ *   - ``ok``      : both responses are 2xx AND both bodies parse as
+ *                   JSON. A 200 with a malformed body is reported as
+ *                   ``error`` -- a green chip on a broken page is the
+ *                   exact lie this gate is meant to prevent.
+ *   - ``pending`` : exactly one probe fails (4xx, 5xx, network, or
+ *                   CORS error). The page is mid-deploy; refresh once
+ *                   the trainer has finished.
+ *   - ``error``   : both probes fail (any non-2xx, network, CORS, or
+ *                   JSON parse error). The page is up but the LSTM
+ *                   cannot run; do not trust the readouts.
  *
  * The chip is identified by id ``chip_retrain`` so a future round can
  * add more dynamic chips without re-engineering this hook.
@@ -64,7 +69,12 @@ async function verifyArtifacts() {
   async function probe(url) {
     try {
       const r = await fetch(url, { cache: "no-store" });
-      return r.ok;
+      if (!r.ok) return false;
+      // Parse the body so a 200 with a truncated or malformed JSON
+      // payload is reported as error, not ok.  The body is consumed
+      // here; callers do not need it.
+      await r.json();
+      return true;
     } catch (_) { return false; }
   }
   const [cfgOk, mdlOk] = await Promise.all([probe("config.json"), probe("model.json")]);
@@ -72,16 +82,16 @@ async function verifyArtifacts() {
   if (cfgOk && mdlOk) {
     chip.classList.add("ok");
     chip.textContent = "MODEL RETRAIN COMPLETE";
-    chip.title = "config.json and model.json both 200; LSTM weights present.";
+    chip.title = "config.json and model.json both 2xx with parseable bodies; LSTM weights present.";
   } else if (!cfgOk && !mdlOk) {
     chip.classList.add("error");
     chip.textContent = "ARTIFACTS UNREACHABLE";
-    chip.title = "config.json and model.json both 404. Run \`python -m ml.train\` and refresh.";
+    chip.title = "config.json and model.json both failed the HTTP or JSON probe. Run \`python -m ml.train\` and refresh.";
   } else {
     chip.classList.add("pending");
     chip.textContent = "MODEL RETRAIN PENDING";
     const missing = !cfgOk ? "config.json" : "model.json";
-    chip.title = `${missing} returned 404. Run \`python -m ml.train\` and refresh.`;
+    chip.title = `${missing} failed the HTTP or JSON probe. Run \`python -m ml.train\` and refresh.`;
   }
 }
 
@@ -884,6 +894,17 @@ init().catch(err => {
   console.error("dashboard init failed:", err);
   // Even on init failure, run the chip-flip hook so the operator sees
   // an honest "pending" / "error" chip rather than a permanent amber
-  // "verifying…" tooltip.
-  verifyArtifacts().catch(() => {});
+  // "verifying…" tooltip.  If the chip-flip itself throws (it touches
+  // the DOM, so a future refactor could trip it), force the chip to
+  // "error" so the operator is never shown a half-updated chip.
+  verifyArtifacts().catch(e => {
+    console.error("verifyArtifacts failed:", e);
+    const chip = $("chip_retrain");
+    if (chip) {
+      chip.classList.remove("ok", "pending");
+      chip.classList.add("error");
+      chip.textContent = "ARTIFACTS UNREACHABLE";
+      chip.title = "chip-flip probe threw after init failed; refresh and check the console.";
+    }
+  });
 });

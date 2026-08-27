@@ -14,7 +14,7 @@
 | 3 | HIGH | `ml/scenarios.py:202` | Combo scenarios (`combo_wear_overheat`, `combo_wear_hyd`, `combo_lube_fatigue`, `combo_lube_seal`) ran a `lambda a: a[0] if a else "healthy"` selector that took the first fault in iteration order — which depended on the simulator's internal RNG state and made the training label for the same combo scenario differ between runs. The first expression was also syntactically a callable, which broke on the next Python revision. | Replaced with `sorted(obs)[0] if obs else "healthy"`, so the label is the alphabetically first observable fault. The classification head remains single-label by design (C is the declared fault taxonomy, not the number of co-firing faults). **Co-firing faults are not currently surfaced in the HUD** — see "What did **not** change" below. | Retrain (combo scenario test now stably labelled); `test_label_integrity.py` continues to pass |
 | 4 | HIGH | `ml/parts.py` | Six display-only parameters (NBC `overpressure` / `filter_dp`, exhaust `backpressure` / `particulate_index`, acoustics `ae_burst_energy`, hydraulics `hyd_force`) were declared without `health_exclude`, so `part_health_index` scored them even though the LSTM never saw them — the health index and the model's view of the world disagreed. | Marked each as `health_exclude: True` with a comment explaining why (no simulator plant, sensor on a future pipeline). | `tests/test_leakage.py::TestSchemaCoversEverySubsystem` |
 | 5 | HIGH | CI gates | `.github/workflows/tests.yml` and `pages.yml` referenced `tests/test_leakage.py` and `tools_check_artifacts.py` but neither file existed. The "no-skip" leakage guard was unenforceable. | Shipped both. `test_leakage.py` is unconditional (no `skipUnless`) and exercises three classes of invariant: schema coverage, label leakage, and C-header / model / config agreement. `tools_check_artifacts.py` reads the schema from `ml.parts` and the C dim from the Python source, so it cannot drift. | `python -m pytest tests/test_leakage.py` (15/15 pass) + `python tools_check_artifacts.py` (exit 0) |
-| 6 | HIGH | UI | The dashboard had no visible signal that the published artifacts reflected the remediation. An operator looking at the live page could not tell whether the LSTM was running the new gradient, the new schema, or the old one. | Added a `REMEDIATION ROUND 1` bar above the parts grid showing each fix as a chip (`LSTM GRADIENT FIXED`, `INPUT SCHEMA D=26`, `COMBO LABELS FIXED`, `DISPLAY-ONLY FLAGGED`, `LEAKAGE GATES LIVE`, `MODEL RETRAIN COMPLETE`). The retrain chip is a *dynamic* artifact-gate indicator: on load, `dashboard.js::verifyArtifacts()` issues two `cache: "no-store"` fetches against `config.json` and `model.json` and flips the chip to one of three terminal states — `ok` (both 200, green) / `pending` (one 404, amber, label `MODEL RETRAIN PENDING`) / `error` (both unreachable, red, label `ARTIFACTS UNREACHABLE`). The page renders the chip in its initial `pending` class so it cannot appear green before the probes have run. | `tests/test_hud_smoke.py::TestHudSmoke::test_retrain_chip_is_ok` (Playwright headless against the served `docs/index.html`); manual via the local Pages preview |
+| 6 | HIGH | UI | The dashboard had no visible signal that the published artifacts reflected the remediation. An operator looking at the live page could not tell whether the LSTM was running the new gradient, the new schema, or the old one. | Added a `REMEDIATION ROUND 1` bar above the parts grid showing each fix as a chip (`LSTM GRADIENT FIXED`, `INPUT SCHEMA D=26`, `COMBO LABELS FIXED`, `DISPLAY-ONLY FLAGGED`, `LEAKAGE GATES LIVE`, `MODEL RETRAIN COMPLETE`). The retrain chip is a *dynamic* artifact-gate indicator: on load, `dashboard.js::verifyArtifacts()` issues two `cache: "no-store"` fetches against `config.json` and `model.json` and flips the chip to one of three terminal states — `ok` / `pending` / `error` — with the precise triggers documented in the "Dynamic retrain chip contract" subsection below. The page renders the chip in its initial `pending` class so it cannot appear green before the probes have run. The round-3 follow-up extended the probe to also `await r.json()` on each response, so a 200 with a malformed or truncated body is reported as `error` rather than the false-positive `ok` that an earlier draft would have produced. | `tests/test_hud_smoke.py::TestHudSmoke` (6 cases: page load + console error capture, retrain chip ok, 5 static chips, 14 health_exclude params across all part modals, chip error state via `page.route`, chip pending state via `page.route`); manual via the local Pages preview |
 
 ## Dataset-availability statement
 
@@ -53,15 +53,28 @@ static badge. Its three terminal states are:
 
 | State | Trigger | Visual | Operator reads |
 |-------|---------|--------|----------------|
-| `ok` | both `config.json` and `model.json` return HTTP 200 in the browser probe | green pill, label `MODEL RETRAIN COMPLETE` | "the page is shipping the new weights" |
-| `pending` | exactly one of the two returns 404 | amber pill, label `MODEL RETRAIN PENDING` | "an export is mid-flight — refresh in a moment" |
-| `error` | both fetches fail (network, 5xx, CORS) | red pill, label `ARTIFACTS UNREACHABLE` | "the page is up but the model is not — do not trust the readouts" |
+| `ok` | both probes return a 2xx response **and** both bodies parse as JSON | green pill, label `MODEL RETRAIN COMPLETE` | "the page is shipping the new weights" |
+| `pending` | exactly one probe fails (4xx, 5xx, network, CORS, or JSON parse error) | amber pill, label `MODEL RETRAIN PENDING` | "an export is mid-flight — refresh in a moment" |
+| `error` | both probes fail (4xx, 5xx, network, CORS, or JSON parse error) | red pill, label `ARTIFACTS UNREACHABLE` | "the page is up but the model is not — do not trust the readouts" |
 
-The probe uses `fetch(..., { cache: "no-store" })` so a stale cache cannot make a
-broken deployment look green. The chip is rendered in the initial `pending`
+**Honest limits of the gate.** The probe runs in the browser and therefore
+can only see what the page's `fetch` can see. A 2xx with a malformed JSON
+body is treated as `ok` only after `await r.json()` resolves cleanly — a
+200 + truncated body is correctly reported as `error`. The probe does not
+deep-validate the JSON (it does not check that the schema agrees with the
+shipped `ml.parts.INPUT_FEATURES`); that invariant is guarded separately by
+`tools_check_artifacts.py` and `tests/test_leakage.py`, which run in the
+build pipeline, not in the browser. If the browser probe is `ok` and the
+build gate has been bypassed, the page can still crash inside the LSTM
+inference path; the chip will not detect that.
+
+The probe uses `fetch(..., { cache: "no-store" })` so a stale cache cannot make
+a broken deployment look green. The chip is rendered in the initial `pending`
 class, so the page can never claim `ok` before the probes have resolved.
-Verified by `tests/test_hud_smoke.py` (Playwright headless), which waits for
-the chip to leave `pending` before asserting the final state.
+Verified by `tests/test_hud_smoke.py` (Playwright headless, 6 cases), which
+waits for the chip to leave `pending` before asserting the final state and
+exercises both the `error` and `pending` branches via `page.route` so a
+deploy that breaks the artifact gate is caught by CI, not by the operator.
 
 ## What did **not** change
 
