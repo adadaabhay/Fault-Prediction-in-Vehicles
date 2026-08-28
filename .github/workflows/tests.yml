@@ -49,6 +49,9 @@ jobs:
       - name: Verify published artifacts are self-consistent
         run: python -m tools.check_artifacts
 
+      - name: Verify docs links are not 404
+        run: python -m tools.check_links
+
       - name: Check JS syntax
         run: |
           for f in docs/*.js; do

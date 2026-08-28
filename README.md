@@ -76,7 +76,6 @@ Fault-Prediction-in-Vehicles/
 ├── sim/                  Physics-informed tank simulator
 │   ├── cvrde/            CVRDE-specific subsystems (powerpack, HSU, GCS, NBC)
 │   ├── physics/          Engine, exhaust, hydraulics, vibration, ... physics
-│   ├── scripts/          Legacy one-off generators (preserved for back-compat)
 │   └── generators/       Per-subsystem sensor data generators + master CLI
 ├── telemetry_gateway/    FastAPI ingest + WebSocket broadcast + J1939
 ├── tools/                Developer / CI entry points
@@ -248,6 +247,10 @@ lacks the hardware rig) can skip what it cannot run:
   interface contracts.
 * [docs/PROVENANCE.md](docs/PROVENANCE.md) — model + dataset provenance.
 * [docs/REMEDIATION.md](docs/REMEDIATION.md) — audit-remediation history.
+* [docs/openapi.json](docs/openapi.json) — gateway HTTP API spec.
+* [docs/assets/hud_nbc_modal.png](docs/assets/hud_nbc_modal.png) — the
+  NBC subsystem detail modal the HUD renders when an operator opens a
+  module from the live feed.
 
 ## Datasets
 

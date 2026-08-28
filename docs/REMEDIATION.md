@@ -78,7 +78,7 @@ can only see what the page's `fetch` can see. The `await r.json()` check
 catches truncated and malformed bodies but does not deep-validate the
 JSON (it does not check that the schema agrees with the shipped
 `ml.parts.INPUT_FEATURES`); that invariant is guarded separately by
-`tools_check_artifacts.py` and `tests/test_leakage.py`, which run in the
+`tools/check_artifacts.py` and `tests/test_leakage.py`, which run in the
 build pipeline, not in the browser. If the browser probe is `ok` and the
 build gate has been bypassed, the page can still crash inside the LSTM
 inference path; the chip will not detect that, and `init().catch` will
@@ -113,7 +113,7 @@ python -m c_engine.gen_dims                  # writes tank_pdm_dims.h D=26
 python -m pytest tests/test_leakage.py -v    # 15/15 pass
 python -m pytest tests/ -v                    # full suite green
 python -m pytest tests/test_hud_smoke.py -v   # headless browser smoke (skips if playwright missing)
-python tools_check_artifacts.py               # exit 0
+python -m tools.check_artifacts               # exit 0
 python -m ml.train --epochs 40 --w-reg 2.0 --w-cls 1.0
 python -m benchmark.evaluate_subsystems --out results/subsystems_benchmark.json
 for f in docs/*.js; do node --check "$f"; done

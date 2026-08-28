@@ -82,6 +82,7 @@ dev = [
 # -- there is no `phm_vehicle` namespace.
 phm-generate = "tools.generate_sensor_data:main"
 phm-check-artifacts = "tools.check_artifacts:main"
+phm-check-links = "tools.check_links:main"
 phm-server = "telemetry_gateway.server:main"
 
 # ---------------------------------------------------------------------------

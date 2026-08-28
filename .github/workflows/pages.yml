@@ -32,8 +32,16 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
       - name: Verify published artifacts are self-consistent
-        run: python tools_check_artifacts.py
+        run: python -m tools.check_artifacts
+
+      - name: Verify docs links are not 404
+        run: python -m tools.check_links
 
       - name: Check dashboard JavaScript syntax
         run: for f in docs/*.js; do node --check "$f"; done

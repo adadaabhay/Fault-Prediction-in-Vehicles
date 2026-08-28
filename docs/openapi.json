@@ -1,0 +1,77 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MBT Tactical Telemetry Gateway",
+    "version": "2.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Get Root",
+        "description": "Root health and capabilities status.",
+        "operationId": "get_root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/telemetry/push": {
+      "post": {
+        "summary": "Push Telemetry Endpoint",
+        "description": "REST endpoint to ingest raw sensor readings into the TelemetryBroker.\n\nGuarded: API key, per-client rate limit, and a payload cap. Previously this\nendpoint was completely open -- any host could write vehicle health state.",
+        "operationId": "push_telemetry_endpoint_api_telemetry_push_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/telemetry/status": {
+      "get": {
+        "summary": "Get Telemetry Status",
+        "description": "Returns real-time ingestion status and stream performance metrics.",
+        "operationId": "get_telemetry_status_api_telemetry_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/telemetry/latest": {
+      "get": {
+        "summary": "Get Latest Telemetry",
+        "description": "Returns the most recent telemetry frame.",
+        "operationId": "get_latest_telemetry_api_telemetry_latest_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
