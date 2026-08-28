@@ -298,7 +298,7 @@ Legend:
 
 | Subsystem | Status | Monitored Failure Modes & Governing Physics | Applicable Datasets | Provenance | Priority | Source Link & Scope |
 | :--- | :---: | :--- | :--- | :---: | :---: | :--- |
-| **15.1 Composite Armor** | `CONFIDENTIAL / CLASSIFIED` | Subsurface ceramic fracture, delamination under repeated non-penetrating blast.<br>Acoustic Emission elastic wave energy | **In-house `acoustics.py` (AE)** | 🔴 Synthetic Sim | **P4 (Sim)** | • [AE Module in `acoustics.py`](file:///c:/Users/abhay/Documents/Vnest/Fault-Prediction-in-Vehicles/sim/physics/acoustics.py): Micro-crack acoustic emission event rate and energy ($\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$). |
+| **15.1 Composite Armor** | `CONFIDENTIAL / CLASSIFIED` | Subsurface ceramic fracture, delamination under repeated non-penetrating blast.<br>Acoustic Emission elastic wave energy | **In-house `acoustics.py` (AE)** | 🔴 Synthetic Sim | **P4 (Sim)** | • [AE Module in `acoustics.py`](./sim/physics/acoustics.py): Micro-crack acoustic emission event rate and energy ($\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$). |
 | **15.2 ERA Cassettes** | `CONFIDENTIAL / CLASSIFIED` | Explosive cassette detachment, environmental casing seal breach.<br>Vibration resonance shift | **In-house `vibration.py`** | 🔴 Synthetic Sim | **P4 (Sim)** | • Modeled via structural natural frequency shifts ($\omega_n = \sqrt{\frac{k}{m}}$). |
 
 ---
@@ -346,7 +346,7 @@ Legend:
 | :--- | :---: | :--- | :--- | :---: | :---: | :--- |
 | **19.1 Sensor Validation** | `OPEN PROXY PROCURED` | Transducer detachment, wiring harness short/open, spurious signal drift.<br>Multi-sensor cross-channel correlation | **All Catalogue Datasets**<br>**In-house `sim/`** | Multi-Source<br>🔴 Synthetic Sim | **P1 (Core)**<br>**P1 (Core)** | • PNN cross-checks vibration, temperature, and oil debris before triggering mechanical failure alerts. |
 | **19.2 Hybrid RUL Engine** | `OPEN PROXY PROCURED` | Remaining Useful Life probability distribution collapse, particle filter variance.<br>$\text{RUL} = \int P(\text{fail} \mid x) dt$ | **SCANIA Component X**<br>**NASA N-CMAPSS (DS01–08)**<br>**US Army CBM (Kuiper)** | 🟢 Real In-Service<br>🟡 Hybrid (Flight+Sim)<br>🟢 Real In-Service (Military) | **P1 (Core)**<br>**P2**<br>**P1 (Core)** | • [SCANIA Comp X](https://researchdata.se/en/catalogue/dataset/2024-34): Fleet time-to-event ground truth.<br>• [N-CMAPSS PHM](https://data.phmsociety.org/2021-phm-conference-data-challenge/): Multi-failure-mode RUL.<br>• [gen_pm GitHub](https://github.com/patrick-kuiper/gen_pm): Military CAN prediction. |
-| **19.3 Decision Audit Log** | `OPEN PROXY PROCURED` | Maintenance recommendation misclassification, spare part demand error.<br>Machine Learning Forecasting | **In-house `decision_audit_log.jsonl`** | 🟢 Real In-Service Pipeline | **P1 (Core)** | • [Results Audit Log in `results/`](file:///c:/Users/abhay/Documents/Vnest/results/decision_audit_log.jsonl): UTC-timestamped JSON-Lines audit stream linking onboard predictions to depot logistics. |
+| **19.3 Decision Audit Log** | `OPEN PROXY PROCURED` | Maintenance recommendation misclassification, spare part demand error.<br>Machine Learning Forecasting | **In-house `decision_audit_log.jsonl`** | 🟢 Real In-Service Pipeline | **P1 (Core)** | • [Results Audit Log in `results/`](./results/decision_audit_log.jsonl): UTC-timestamped JSON-Lines audit stream linking onboard predictions to depot logistics. |
 
 ---
 
@@ -407,34 +407,41 @@ Legend:
 
 ---
 
-## 5. Automated Data Staging Workflow (PowerShell)
+## 5. Automated Data Staging Workflow (bash)
 
-Run the following command in PowerShell from the project root to create the structured proxy directories and stage the core verified datasets:
+Run the following command in bash from the project root to create the structured proxy directories and stage the core verified datasets:
 
-```powershell
-# Execute from workspace root: c:\Users\abhay\Documents\Vnest
+```bash
+# Execute from the project root (any POSIX shell: bash, zsh, WSL).
+set -euo pipefail
+
 mkdir -p datasets/procured/zema_hydraulic
 mkdir -p datasets/procured/metropt3_apu
 mkdir -p datasets/procured/deutz_engine
 mkdir -p datasets/procured/scania_aps
 
-# 1. Download ZeMA Hydraulic Condition Monitoring (UCI 447)
-Write-Host "Downloading ZeMA Hydraulic Dataset (UCI 447)..."
-Invoke-WebRequest -Uri "https://archive.ics.uci.edu/static/public/447/condition+monitoring+of+hydraulic+systems.zip" -OutFile "datasets/procured/zema_hydraulic/zema.zip"
-Expand-Archive -Path "datasets/procured/zema_hydraulic/zema.zip" -DestinationPath "datasets/procured/zema_hydraulic/"
+# 1. ZeMA Hydraulic Condition Monitoring (UCI 447)
+echo "Downloading ZeMA Hydraulic Dataset (UCI 447)..."
+curl -L --fail -o datasets/procured/zema_hydraulic/zema.zip \
+    "https://archive.ics.uci.edu/static/public/447/condition+monitoring+of+hydraulic+systems.zip"
+unzip -o datasets/procured/zema_hydraulic/zema.zip -d datasets/procured/zema_hydraulic/
 
-# 2. Download MetroPT-3 Train Air Production Unit (UCI 791)
-Write-Host "Downloading MetroPT-3 APU Dataset (UCI 791)..."
-Invoke-WebRequest -Uri "https://archive.ics.uci.edu/static/public/791/metropt+3+dataset.zip" -OutFile "datasets/procured/metropt3_apu/metropt3.zip"
-Expand-Archive -Path "datasets/procured/metropt3_apu/metropt3.zip" -DestinationPath "datasets/procured/metropt3_apu/"
+# 2. MetroPT-3 Train Air Production Unit (UCI 791)
+echo "Downloading MetroPT-3 APU Dataset (UCI 791)..."
+curl -L --fail -o datasets/procured/metropt3_apu/metropt3.zip \
+    "https://archive.ics.uci.edu/static/public/791/metropt+3+dataset.zip"
+unzip -o datasets/procured/metropt3_apu/metropt3.zip -d datasets/procured/metropt3_apu/
 
-# 3. Download Deutz TCD 12.0 V6 Diesel Engine Air Path (Zenodo 5766940)
-Write-Host "Downloading Deutz TCD 12.0 V6 Air Path Dataset (Zenodo 5766940)..."
-Invoke-WebRequest -Uri "https://zenodo.org/records/5766940/files/tb_nrtc.csv" -OutFile "datasets/procured/deutz_engine/tb_nrtc.csv"
-Invoke-WebRequest -Uri "https://zenodo.org/records/5766940/files/gt_nrtc.csv" -OutFile "datasets/procured/deutz_engine/gt_nrtc.csv"
+# 3. Deutz TCD 12.0 V6 Diesel Engine Air Path (Zenodo 5766940)
+echo "Downloading Deutz TCD 12.0 V6 Air Path Dataset (Zenodo 5766940)..."
+curl -L --fail -o datasets/procured/deutz_engine/tb_nrtc.csv \
+    "https://zenodo.org/records/5766940/files/tb_nrtc.csv"
+curl -L --fail -o datasets/procured/deutz_engine/gt_nrtc.csv \
+    "https://zenodo.org/records/5766940/files/gt_nrtc.csv"
 
-# 4. Download APS Failure at Scania Trucks (UCI 421)
-Write-Host "Downloading APS Failure at Scania Trucks (UCI 421)..."
-Invoke-WebRequest -Uri "https://archive.ics.uci.edu/static/public/421/aps+failure+at+scania+trucks.zip" -OutFile "datasets/procured/scania_aps/scania_aps.zip"
-Expand-Archive -Path "datasets/procured/scania_aps/scania_aps.zip" -DestinationPath "datasets/procured/scania_aps/"
+# 4. APS Failure at Scania Trucks (UCI 421)
+echo "Downloading APS Failure at Scania Trucks (UCI 421)..."
+curl -L --fail -o datasets/procured/scania_aps/scania_aps.zip \
+    "https://archive.ics.uci.edu/static/public/421/aps+failure+at+scania+trucks.zip"
+unzip -o datasets/procured/scania_aps/scania_aps.zip -d datasets/procured/scania_aps/
 ```

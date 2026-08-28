@@ -30,9 +30,9 @@ import time
 import unittest
 from typing import Any, Dict, List
 
-# Add project roots
+# Add the repo root (this directory's parent) to sys.path so the
+# telemetry_gateway/, sim/, and ml/ packages import without an editable install.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Fault-Prediction-in-Vehicles"))
 
 import numpy as np
 

@@ -23,7 +23,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "Fault-Prediction-in-Vehicles"))
 
 from telemetry_gateway.pipeline import PHMPipeline
 
@@ -134,7 +133,13 @@ class TestBlockChainRuns(unittest.TestCase):
                              "no prognosis after the window filled")
         probs = out["prognosis"]["fault_probs"]
         self.assertAlmostEqual(sum(probs.values()), 1.0, places=6)
-        self.assertEqual(len(out["prognosis"]["rul_fraction"]), 8)
+        # RUL count must match the part_order the model was published with
+        # -- pin to the live inference config so a legitimate retrain to a
+        # different R does not break this test.
+        self.assertEqual(
+            len(out["prognosis"]["rul_fraction"]),
+            len(self.p.inference.part_order),
+        )
 
     def tearDown(self):
         f = ROOT / "results" / "_test_flash.jsonl"

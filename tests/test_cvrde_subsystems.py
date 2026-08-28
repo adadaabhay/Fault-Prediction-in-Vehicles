@@ -4,9 +4,9 @@ import unittest
 import sys
 from pathlib import Path
 
-# Add project roots
+# Add the repo root (this directory's parent) to sys.path so the
+# sim/, ml/, and tools/ packages import without an editable install.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Fault-Prediction-in-Vehicles"))
 
 from sim.cvrde.cvrde_config import CVRDETankConfig
 from sim.cvrde.powerpack import CVRDEPowerpack

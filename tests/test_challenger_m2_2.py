@@ -2,7 +2,7 @@
 
 ML Resilience & Neural Protection Verification:
 Interception between `telemetry_gateway/sensor_plausibility.py` and downstream
-neural/feature extractors (`Fault-Prediction-in-Vehicles/ml/lstm.py` and `c_engine`).
+neural/feature extractors (`ml/lstm.py` and `c_engine`).
 
 Verification Objectives:
 1. Control Experiment: Verify that raw un-sanitized adversarial corruption causes

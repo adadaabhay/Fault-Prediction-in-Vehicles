@@ -1,0 +1,250 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phm-vehicle"
+version = "0.1.0"
+description = "Defense-grade Prognostics & Health Management for military armored fighting vehicles"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "PHM/CBM+ Project"}
+]
+keywords = [
+    "phm", "cbm", "prognostics", "health-management",
+    "predictive-maintenance", "defense", "military",
+    "lstm", "fault-diagnosis", "sae-j1939"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: System :: Monitoring",
+]
+
+# Production runtime dependencies -- pinned for reproducible numerics.
+# These are duplicated in requirements.txt for environments that prefer pip-tools.
+dependencies = [
+    "numpy>=1.26,<3.0",
+    "pandas>=2.0,<3.0",
+    "scipy>=1.11,<2.0",
+    "fastapi>=0.110,<1.0",
+    "uvicorn[standard]>=0.27,<1.0",
+    "websockets>=12,<15",
+    "pyserial>=3.5,<4.0",
+    "requests>=2.31,<3.0",
+    "h5py>=3.10,<4.0",
+    "joblib>=1.3,<2.0",
+    "scikit-learn>=1.4,<2.0",
+    "lightgbm>=4.3,<5.0",
+]
+
+[project.optional-dependencies]
+# Optional pipelines for public-dataset benchmarks (host repo only; see DATA.md).
+bench = [
+    "lightgbm>=4.3,<5.0",
+    "xgboost>=2.0,<3.0",
+    "catboost>=1.2,<2.0",
+]
+# Hardware ingest via CAN-bus / J1939 (requires libpcan on Linux).
+hardware = [
+    "python-can>=4.4,<5.0",
+]
+# Everything needed to develop, test and lint the package.
+dev = [
+    "pytest>=8.0,<9.0",
+    "pytest-asyncio>=0.23,<1.0",
+    "ruff>=0.4,<1.0",
+    "mypy>=1.10,<2.0",
+    "coverage>=7.5,<8.0",
+    "playwright>=1.44,<2.0",
+    "hypothesis>=6.100,<7.0",
+]
+
+[project.urls]
+"Source" = "https://github.com/adadaabhay/Fault-Prediction-in-Vehicles"
+"Documentation" = "https://github.com/adadaabhay/Fault-Prediction-in-Vehicles/blob/main/docs/PROVENANCE.md"
+"Issues" = "https://github.com/adadaabhay/Fault-Prediction-in-Vehicles/issues"
+
+[project.scripts]
+# Top-level CLI entry points installed with the package.  The package
+# uses a flat layout (telemetry_gateway/, ml/, sim/, c_engine/ at the
+# repo root), so the entry-point paths are the module paths themselves
+# -- there is no `phm_vehicle` namespace.
+phm-generate = "tools.generate_sensor_data:main"
+phm-check-artifacts = "tools.check_artifacts:main"
+phm-server = "telemetry_gateway.server:main"
+
+# ---------------------------------------------------------------------------
+# Setuptools configuration.  We use a flat layout (telemetry_gateway/, ml/,
+# sim/, c_engine/ at the repo root) because the existing tests, the
+# dashboard's model.json pathing and the c_engine CMake build all assume it.
+# The src/ layout would force every relative import to be rewritten and break
+# the live JS HUD.  Do not migrate without an end-to-end test pass.
+# ---------------------------------------------------------------------------
+[tool.setuptools]
+packages = [
+    "telemetry_gateway",
+    "ml",
+    "sim",
+    "sim.cvrde",
+    "sim.physics",
+    "sim.generators",
+    "c_engine",
+    "tools",
+]
+include-package-data = true
+
+[tool.setuptools.package-data]
+# Ship the C headers and any pre-trained weight blobs with the wheel so a
+# downstream `pip install phm-vehicle` can re-build the C edge runtime.
+c_engine = ["*.h", "*.c", "*.bin", "*.md", "CMakeLists.txt"]
+"sim.physics" = ["*.py"]
+ml = ["*.md"]
+
+[tool.setuptools.data-files]
+# The dashboard files have to be deployed alongside the package because the
+# in-browser JS reads them over HTTP.
+"share/phm_vehicle/dashboard" = [
+    "docs/index.html",
+    "docs/dashboard.js",
+    "docs/live.js",
+    "docs/lstm.js",
+    "docs/gauges.js",
+    "docs/style.css",
+    "docs/config.json",
+    "docs/model.json",
+    "docs/PROVENANCE.md",
+]
+"share/phm_vehicle/dashboard/assets" = [
+    "docs/assets/*",
+]
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+    "--durations=20",
+]
+# Markers used by the suite.  Add a new marker here when introducing one in
+# test code so the strict-markers option does not turn it into an error.
+markers = [
+    "adversarial: adversarial-input tests (FDIR, DTC encoders)",
+    "hud: browser smoke tests for the dashboard (require playwright)",
+    "hil: hardware-in-the-loop tests (skipped without serial hardware)",
+    "parity: cross-implementation parity tests (JS vs Py, C vs Py)",
+    "slow: long-running tests (>5s)",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff (lint + format)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [
+    "docs",
+    "results",
+    "datasets",
+    "c_engine/build",
+    "**/__pycache__",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "N",   # pep8-naming
+    "SIM", # flake8-simplify
+    "RET", # flake8-return
+    "ARG", # flake8-unused-arguments
+    "PTH", # flake8-use-pathlib
+    "ERA", # eradicate (commented-out code)
+]
+ignore = [
+    "E501",   # line length -- handled by formatter
+    "B008",   # function call in default argument (FastAPI uses this idiom)
+    "N803",   # uppercase in function name (engineering units: kN, kHz)
+    "N806",   # uppercase in variable name (SI unit symbols)
+    "ARG001", # unused function argument (callback signatures)
+    "ARG002", # unused method argument
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011", "N802", "N803"]   # assert, snake_case in test fixtures
+"sim/scripts/*" = ["E402", "PTH"]      # scripts run with cwd=repo root
+"tools/*" = ["E402"]                   # same
+"c_engine/*" = ["E", "W", "F", "N"]    # C-extension shims follow C naming
+
+[tool.ruff.lint.isort]
+known-first-party = ["telemetry_gateway", "ml", "sim", "c_engine", "tools"]
+
+# ---------------------------------------------------------------------------
+# Mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_warnings = true
+ignore_missing_imports = true
+exclude = [
+    "docs",
+    "results",
+    "datasets",
+    "c_engine/build",
+    "build",
+    ".venv",
+]
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+branch = true
+source = ["telemetry_gateway", "ml", "sim", "c_engine", "tools"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/build/*",
+    "docs/*",
+    "results/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 60
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "pass",
+]

@@ -283,8 +283,7 @@ async def get_latest_telemetry():
 # ---------------------------------------------------------------------------
 # Fallback stream
 # ---------------------------------------------------------------------------
-_DEMO_PATH = (Path(__file__).resolve().parents[1]
-              / "Fault-Prediction-in-Vehicles" / "docs" / "live_stream.json")
+_DEMO_PATH = (Path(__file__).resolve().parents[1] / "docs" / "live_stream.json")
 _demo_records: Optional[List[Dict[str, Any]]] = None
 _demo_lock = threading.Lock()
 

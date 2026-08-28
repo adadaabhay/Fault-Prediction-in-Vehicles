@@ -38,7 +38,7 @@ from pipelines.hydraulics_zema import load_zema_hydraulic_data, degradation_orde
 from pipelines.apu_metropt import load_metropt_episodes, METROPT3_FAILURES
 
 REPO = Path(__file__).resolve().parent.parent
-DOCS = REPO / "Fault-Prediction-in-Vehicles" / "docs"
+DOCS = REPO / "docs"
 
 
 def _load_config():

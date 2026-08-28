@@ -43,8 +43,8 @@ from .units import looks_canonical, to_canonical, to_native
 
 logger = logging.getLogger("phm_pipeline")
 
-_DOCS = Path(__file__).resolve().parents[1] / "Fault-Prediction-in-Vehicles" / "docs"
-_ML_ROOT = Path(__file__).resolve().parents[1] / "Fault-Prediction-in-Vehicles"
+_DOCS = Path(__file__).resolve().parents[1] / "docs"
+_ML_ROOT = Path(__file__).resolve().parents[1]
 
 
 class _Inference:

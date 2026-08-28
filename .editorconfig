@@ -1,0 +1,39 @@
+# EditorConfig: https://editorconfig.org
+# Enforces a consistent style across editors / IDEs without requiring a plugin.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{py,pyi}]
+indent_size = 4
+max_line_length = 100
+
+[*.{js,ts,jsx,tsx}]
+indent_size = 2
+max_line_length = 100
+
+[*.{c,h}]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+[*.{json,yml,yaml,toml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+# Markdown renders hard-wrapped newlines in some viewers; let the author choose.
+max_line_length = unset
+
+[*.{csv,tsv}]
+trim_trailing_whitespace = true
+
+[Makefile]
+indent_style = tab

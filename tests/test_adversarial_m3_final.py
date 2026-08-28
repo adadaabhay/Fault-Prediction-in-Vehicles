@@ -26,10 +26,10 @@ import time
 import unittest
 from typing import Any, Dict, List, Set, Tuple
 
-# Project root path setup
+# Project root path setup -- this file lives at <repo>/tests/ so
+# ``parent.parent`` IS the target repo root, no extra indirection needed.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "Fault-Prediction-in-Vehicles"))
 
 from telemetry_gateway.dtc_engine import (
     DTCEngine,

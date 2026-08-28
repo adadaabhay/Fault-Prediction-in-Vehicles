@@ -21,9 +21,8 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-FPV = ROOT / "Fault-Prediction-in-Vehicles"
-DOCS = FPV / "docs"
-sys.path.insert(0, str(FPV))
+DOCS = ROOT / "docs"
+sys.path.insert(0, str(ROOT))
 
 # float64 both sides; the only divergence should be summation order.
 TOLERANCE = 1e-9

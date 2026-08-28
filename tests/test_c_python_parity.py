@@ -16,7 +16,7 @@ from c_engine.build import have_toolchain, missing_tools
 from c_engine.gen_dims import MODEL_PATH, model_dims
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "Fault-Prediction-in-Vehicles"))
+sys.path.insert(0, str(ROOT))
 
 # float32 C against float64 Python, accumulated over a 40-step window.
 TOLERANCE = 1e-4

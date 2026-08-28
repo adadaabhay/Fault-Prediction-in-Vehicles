@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 
 C_DIR = Path(__file__).resolve().parent
-ROOT = C_DIR.parent          # Fault-Prediction-in-Vehicles/
+ROOT = C_DIR.parent          # repo root
 CONFIG_PATH = ROOT / "docs" / "config.json"
 MODEL_PATH  = ROOT / "docs" / "model.json"
 DIMS_HEADER = C_DIR / "tank_pdm_dims.h"
