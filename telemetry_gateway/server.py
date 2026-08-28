@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from .j1939_can_parser import J1939FrameParser
 from .pipeline import get_pipeline
@@ -27,6 +27,15 @@ from .live_sensor_ingest import (
     get_broker,
     start_all_listeners,
     stop_all_listeners,
+)
+from .metrics import (
+    get_metrics_text,
+    inc_push_accepted,
+    inc_push_rejected,
+    inc_websocket_frame,
+    inc_pipeline_error,
+    set_active_clients,
+    set_pipeline_ready,
 )
 
 logger = logging.getLogger("telemetry_server")
@@ -193,6 +202,66 @@ async def get_root():
     }
 
 
+# ---------------------------------------------------------------------------
+# Observability: liveness, readiness, Prometheus metrics
+# ---------------------------------------------------------------------------
+# /healthz — process liveness.  Always 200 if the worker is alive.  This is
+# what Kubernetes / Docker / load balancers should use for the LivenessProbe;
+# a failing /healthz means the process must be killed and restarted.
+#
+# /readyz — readiness.  Returns 200 only if the broker is wired and the
+# pipeline is constructed.  Used for the ReadinessProbe; a not-ready
+# container is taken out of the load-balancer rotation but is NOT restarted.
+#
+# /metrics — Prometheus text exposition format, hand-rolled to avoid pulling
+# in prometheus_client.  See telemetry_gateway/metrics.py for the counter
+# definitions and HELP/TYPE lines.
+@app.get("/healthz", response_class=JSONResponse)
+async def healthz() -> Dict[str, Any]:
+    """Liveness probe — process is up and the event loop is responsive."""
+    return {"status": "ok"}
+
+
+@app.get("/readyz", response_class=JSONResponse)
+async def readyz() -> JSONResponse:
+    """Readiness probe — broker and pipeline are wired and able to ingest.
+
+    Returns 503 if any subsystem is not initialised.  This is intentionally
+    separate from /healthz: a process that is alive but not ready (e.g. the
+    pipeline is still building on first start) should NOT be restarted; it
+    should just be removed from the LB rotation until it is.
+    """
+    checks: Dict[str, bool] = {}
+    checks["broker"] = broker is not None
+    try:
+        pipeline = get_pipeline()
+        checks["pipeline"] = pipeline is not None
+    except Exception as exc:
+        logger.warning("readyz: pipeline not initialised: %s", exc)
+        checks["pipeline"] = False
+    checks["listeners"] = (
+        (udp_listener is None or udp_listener.is_running)
+        and (serial_listener is None or serial_listener.is_running)
+    )
+    set_pipeline_ready(all(checks.values()))
+    status_code = 200 if all(checks.values()) else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": "ready" if all(checks.values()) else "not_ready",
+                 "checks": checks},
+    )
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def metrics() -> Response:
+    """Prometheus text exposition for push / WS / pipeline health."""
+    set_active_clients(len(manager.active_connections))
+    return PlainTextResponse(
+        get_metrics_text(),
+        media_type="text/plain; version=0.0.4",
+    )
+
+
 @app.post("/api/telemetry/push")
 async def push_telemetry_endpoint(request: Request):
     """REST endpoint to ingest raw sensor readings into the TelemetryBroker.
@@ -201,9 +270,11 @@ async def push_telemetry_endpoint(request: Request):
     endpoint was completely open -- any host could write vehicle health state.
     """
     _require_api_key(request)
+    inc_push_accepted()
 
     client = request.client.host if request.client else "unknown"
     if not _rate_limit_ok(client):
+        inc_push_rejected("rate_limit")
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     declared = request.headers.get("content-length")
@@ -432,12 +503,14 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
             }
 
             await websocket.send_json(telemetry_payload)
+            inc_websocket_frame()
             await asyncio.sleep(0.05)  # 20 Hz
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-    except Exception:
+    except Exception as exc:
         # A bare `except Exception: disconnect()` hid every pipeline error
         # behind a clean-looking client disconnect.
-        logger.exception("telemetry websocket failed")
+        inc_pipeline_error("websocket_broadcast")
+        logger.exception("telemetry websocket failed: %s", exc)
         manager.disconnect(websocket)

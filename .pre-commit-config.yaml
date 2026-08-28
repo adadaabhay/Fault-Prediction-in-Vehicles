@@ -1,0 +1,59 @@
+# Pre-commit configuration.
+#
+# Run locally with:
+#   pip install pre-commit
+#   pre-commit install
+#   pre-commit run --all-files
+#
+# CI runs `pre-commit run --all-files` on every PR via .github/workflows/tests.yml.
+# All hooks are pinned by SHA; the `rev:` is the tag the SHA was current at.
+# This is the GitHub-recommended pattern: pin by SHA so a compromised tag
+# cannot silently change what the hook runs.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: detect-private-key
+      # Block accidental commits of merge markers, debug breakpoints,
+      # and the `__pycache__` directories that should be in .gitignore.
+      - id: check-merge-conflict
+      - id: debug-statements
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        # mypy is enforced on the public surface only.  See pyproject.toml
+        # [tool.mypy] for the per-module overrides.  The hook here runs
+        # the same config the CI matrix uses.
+        additional_dependencies: ["types-requests"]
+        files: ^(telemetry_gateway|ml|c_engine/binding\.py|tools)/.*\.py$
+
+  - repo: local
+    hooks:
+      - id: check-artifacts
+        name: model/config schema consistent
+        entry: python -m tools.check_artifacts
+        language: system
+        pass_filenames: false
+      - id: check-links
+        name: docs links not 404
+        entry: python -m tools.check_links
+        language: system
+        pass_filenames: false

@@ -1,0 +1,54 @@
+# Dependabot configuration.
+#
+# We track the runtime, dev, and bench extras declared in pyproject.toml,
+# plus the GitHub Actions versions used by the workflows.  A weekly cadence
+# with grouped PRs keeps the noise low; security updates are bumped to
+# the front of the queue so they cannot wait behind a feature-bump PR.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    groups:
+      runtime:
+        dependency-type: "production"
+      dev:
+        dependency-type: "development"
+        patterns: ["*"]
+    labels:
+      - "dependencies"
+      - "automated"
+    # The target repo is a single-package repo; versioning is set in
+    # pyproject.toml and the bump is the only kind of change Dependabot
+    # can make here.
+    versioning-strategy: increase
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Surface security-relevant updates ahead of feature-bump PRs.
+    # See https://docs.github.com/en/code-security/dependabot/dependabot-security-updates
+    # for the priority semantics.
+    priority: 5
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    priority: 5
