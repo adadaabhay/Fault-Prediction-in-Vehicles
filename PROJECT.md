@@ -140,49 +140,61 @@ The Prognostics & Health Management (PHM/CBM+) ecosystem connects physical/simul
 
 ## Code Layout
 ```
-Vnest/
-├── .agents/                                    # Orchestrator & subagent workspaces (metadata only)
-├── telemetry_gateway/
-│   ├── __init__.py
-│   ├── server.py                              # FastAPI backend with /ws/telemetry & /api/telemetry/push
-│   ├── live_sensor_ingest.py                  # R1: UDP 9000, Serial COM, TelemetryBroker
-│   ├── sensor_plausibility.py                 # R2: Pre-inference FDIR Plausibility Gate
-│   ├── dtc_engine.py                          # R3: SAE J1939-73 DM1/DM2 DTC Engine & Flash Log
-│   ├── pipeline.py                            # PHMPipeline: FDIR -> health -> LSTM -> DTC
-│   ├── units.py                               # SI <-> engineering unit contract
-│   ├── j1939_can_parser.py                    # J1939-71 EEC1 / ET1 / EFL_P1 encode+decode
-│   ├── tactical_burst.py                      # 32-byte EMCON tactical burst encoder
-│   └── export_multi_streams.py                # Telemetry streams generator
-├── Fault-Prediction-in-Vehicles/
-│   ├── docs/                                  # Frontend Web Command HUD
-│   │   ├── index.html                         # Command HUD markup & indicators
-│   │   ├── dashboard.js                       # Real-time HUD controller & gauge updater
-│   │   ├── live.js                            # WebSocket live client with watchdog fallback
-│   │   ├── lstm.js                            # In-browser JS neural inference engine
-│   │   ├── gauges.js                          # 270° radial canvas gauges
-│   │   └── style.css                          # Military tactical HUD styling
-│   ├── ml/                                    # Python ML models & parts definition
-│   │   ├── lstm.py
-│   │   ├── parts.py
-│   │   ├── scenarios.py                       # suite, duty profiles, grouped 3-way split
-│   │   └── train.py
-│   └── sim/                              # CVRDE Arjun Mk-1A & MBT vehicle models
-├── c_engine/                                  # MISRA-C99 Edge Inference Engine
+Fault-Prediction-in-Vehicles/
+├── docs/                                  # Frontend Web Command HUD + OpenAPI
+│   ├── index.html                         # Command HUD markup & indicators
+│   ├── dashboard.js                       # Real-time HUD controller & gauge updater
+│   ├── live.js                            # WebSocket live client with watchdog fallback
+│   ├── lstm.js                            # In-browser JS neural inference engine
+│   ├── gauges.js                          # 270° radial canvas gauges
+│   ├── style.css                          # Military tactical HUD styling
+│   └── assets/                            # vit_logo.svg, hud_nbc_modal.png, ...
+├── ml/                                    # Python ML models & parts definition
+│   ├── lstm.py
+│   ├── parts.py
+│   ├── scenarios.py                       # suite, duty profiles, grouped 3-way split
+│   └── train.py
+├── sim/                                   # Multi-physics simulator (CVRDE Arjun Mk-1A & MBT models)
+│   ├── tank.py
+│   ├── faults.py
+│   ├── features.py
+│   ├── cvrde/                             # Arjun Mk-1A high-rate CVRDE mission generator
+│   ├── physics/                           # sensor models (temperature, oil, vibration, ...)
+│   └── generators/                        # per-subsystem CSV generators (CLI-facing)
+├── telemetry_gateway/                     # FastAPI / WebSocket / J1939-73 DTC engine
+│   ├── server.py                          # FastAPI backend
+│   ├── pipeline.py                        # PHMPipeline: FDIR -> health -> LSTM -> DTC
+│   ├── live_sensor_ingest.py             # UDP 9000, Serial COM, TelemetryBroker
+│   ├── sensor_plausibility.py            # R2: Pre-inference FDIR Plausibility Gate
+│   ├── dtc_engine.py                     # R3: SAE J1939-73 DM1/DM2 DTC Engine & Flash Log
+│   ├── units.py                          # SI <-> engineering unit contract
+│   ├── j1939_can_parser.py               # J1939-71 EEC1 / ET1 / EFL_P1 encode+decode
+│   ├── tactical_burst.py                 # 32-byte EMCON tactical burst encoder
+│   └── export_multi_streams.py           # Telemetry streams generator
+├── c_engine/                              # MISRA-C99 Edge Inference Engine
 │   ├── tank_pdm_infer.h
-│   └── tank_pdm_infer.c
-├── tests/                                     # Automated test suites
-│   ├── test_gateway.py
-│   ├── test_cvrde_subsystems.py
-│   ├── test_c_engine.py
-│   ├── test_pipelines.py
-│   ├── test_live_ingest.py                    # Unit & integration tests for R1
-│   ├── test_plausibility.py                   # Unit & adversarial tests for R2
-│   ├── test_dtc_engine.py                     # Unit & compliance tests for R3
-│   ├── test_pipeline.py                       # PHM block-chain wiring
-│   ├── test_units.py                          # Unit-contract round trip + envelope
-│   ├── test_js_python_parity.py               # docs/lstm.js vs ml/lstm.py
-│   └── test_c_python_parity.py                # c_engine vs ml/lstm.py + fail-safe
-└── results/
-    ├── dtc_flash_log.jsonl                    # Flash ring buffer maintenance log
-    └── subsystems_benchmark.json              # Real-corpus benchmark results
+│   ├── tank_pdm_infer.c
+│   ├── tank_pdm_weights.{h,c}
+│   ├── tank_pdm_dims.h
+│   ├── binding.py
+│   ├── build.py
+│   ├── gen_dims.py
+│   ├── export_weights.py
+│   └── CODING_STANDARD.md
+├── pipelines/                             # Public-corpora ingesters (MetroPT, ZeMA, Scania, ...)
+│   ├── _paths.py                         # dataset-root resolver
+│   ├── apu_metropt.py
+│   ├── hydraulics_zema.py
+│   ├── engine_deutz.py
+│   ├── fleet_scania_componentx.py
+│   ├── heavy_scania.py
+│   ├── can_aegis.py
+│   └── naval_gasturbine.py
+├── benchmark/                             # Multi-subsystem benchmark harness
+│   └── evaluate_subsystems.py
+├── tools/                                 # Operator-facing CLI
+│   ├── generate_sensor_data.py            # per-subsystem CSV + manifest + SHA-256
+│   └── check_artifacts.py                 # CI gate: model.json / config.json consistency
+├── tests/                                 # Automated test suites (32 files)
+└── results/                               # Regenerated metrics, decision log, plots
 ```

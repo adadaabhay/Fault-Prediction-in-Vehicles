@@ -147,7 +147,7 @@ sufficient on its own.
 External datasets are **not** required to run the simulator — every
 generator here emits synthetic data from `sim.tank.TankSimulator`.  See
 [DATA.md](DATA.md) for the list of public corpora the benchmark
-pipelines in the host monorepo consume.
+pipelines in this repo's `pipelines/` consume.
 
 ## Generate sensor data
 
@@ -255,9 +255,9 @@ This repo does **not** ship any dataset.  The simulator in `sim/`
 generates synthetic data from a physics-based tank model; the
 generated CSVs land in `data/simulated/` (gitignored).
 
-The benchmark pipelines in the host monorepo (separate from this
-repo) consume the public corpora listed in [DATA.md](DATA.md).  They
-are not required to use, run, test, or extend this package.
+The benchmark pipelines in this repo's `pipelines/` consume the public
+corpora listed in [DATA.md](DATA.md).  They are not required to use,
+run, test, or extend this package.
 
 ## License
 

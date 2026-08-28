@@ -28,8 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contract, and deployment topology.
 
 ### Changed
-- Moved seven legacy one-off fix-up scripts from the host monorepo's
-  root to `archive/` so the deployable repo no longer carries
+- Moved seven legacy one-off fix-up scripts from the previous
+  ad-hoc workspace to `archive/` so the deployable repo no longer carries
   one-shot dev debris.
 
 ### Removed

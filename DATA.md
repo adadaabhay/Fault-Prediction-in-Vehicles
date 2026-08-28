@@ -8,15 +8,15 @@ used for."
 The simulator inside `sim/` does **not** require any of these datasets to
 run -- every per-subsystem sensor generator in `sim/generators/` produces
 its CSV from `sim.tank.TankSimulator` alone.  These external corpora are
-consumed by the host-monorepo benchmark pipelines (in the parent
-`Vnest/pipelines/` directory), which validate the same models on
-real-world data so a deployment-grade claim can be made.
+consumed by the benchmark pipelines in this repo's `pipelines/`
+directory, which validate the same models on real-world data so a
+deployment-grade claim can be made.
 
 ---
 
 ## Layout
 
-| Category                    | Where it lives in the monorepo          | Used by                                |
+| Category                    | Where it lives in the repo             | Used by                                |
 |-----------------------------|----------------------------------------|----------------------------------------|
 | Synthetic (in-repo)         | `sim.generators.*` → `data/simulated/` | training, dashboard demo               |
 | Public corpora (procured)   | `datasets/procured/<name>/`            | `pipelines/<name>.py`                  |
@@ -47,11 +47,10 @@ CSV in a run.
 
 ## Public corpora (procured, gitignored)
 
-The host monorepo's `pipelines/` directory contains adapter scripts
-that load each public corpus and apply the same preprocessing the
-synthetic pipeline uses, so the model trained on synthetic data can be
-benchmarked on real-world data without re-engineering feature
-extraction.
+The `pipelines/` directory in this repo contains adapter scripts that
+load each public corpus and apply the same preprocessing the synthetic
+pipeline uses, so the model trained on synthetic data can be benchmarked
+on real-world data without re-engineering feature extraction.
 
 | Corpus                                  | Pipeline                       | What it is                                              | License    |
 |-----------------------------------------|--------------------------------|---------------------------------------------------------|------------|

@@ -12,8 +12,9 @@ Canonical layout (this repo, cloned to any path):
     ├── datasets/           ← gitignored, populated by the data procurement step
     └── ...
 
-Legacy layout (when this repo sits as a child of an older Vnest/ workspace,
-still supported so existing data on disk keeps working):
+Optional workspace-parent layout (opt-in; set ``PHM_DATASETS_PARENT=1`` so
+existing procurement copies that live one level above the repo keep
+working without re-procurement):
 
     <workspace>/
     ├── datasets/           ← one level above the repo
@@ -21,11 +22,11 @@ still supported so existing data on disk keeps working):
 
 Resolution order, first hit wins:
 
-    1. ``$PHM_DATASETS_DIR``  if set (explicit override; useful in CI)
-    2. ``<repo>/datasets/``            (canonical)
-    3. ``<repo>/../datasets/``         (legacy Vnest/ nesting)
-    4. ``CWD/datasets/``               (developer convenience; e.g. running
-                                       a notebook from the procurement root)
+    1. ``$PHM_DATASETS_DIR`` if set (explicit override; useful in CI)
+    2. ``<repo>/datasets/``           (canonical)
+    3. ``<repo>/../datasets/``        (only if ``PHM_DATASETS_PARENT=1``)
+    4. ``CWD/datasets/``              (developer convenience; e.g. running
+                                      a notebook from the procurement root)
 
 The loaders accept an explicit ``data_dir=`` so test fixtures can override
 the resolver without touching the environment.
@@ -40,12 +41,21 @@ from pathlib import Path
 # parent's parent -- ``pipelines/_paths.py`` is at ``<repo>/pipelines/``).
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Candidate dataset roots, evaluated in priority order.
-_CANDIDATES: tuple[Path, ...] = (
-    _REPO_ROOT / "datasets",            # <repo>/datasets/   (canonical)
-    _REPO_ROOT.parent / "datasets",     # <repo>/../datasets/ (legacy Vnest/)
-    Path("datasets"),                   # CWD/datasets/       (dev convenience)
-)
+
+def _candidate_dirs() -> tuple[Path, ...]:
+    """Build the resolution candidate list, honouring opt-in env flags.
+
+    The workspace-parent candidate (``<repo>/../datasets/``) is opt-in
+    via ``PHM_DATASETS_PARENT=1`` so a clean clone of the target does
+    not silently walk up to a sibling workspace it knows nothing about.
+    """
+    candidates: list[Path] = [
+        _REPO_ROOT / "datasets",           # <repo>/datasets/   (canonical)
+    ]
+    if os.environ.get("PHM_DATASETS_PARENT") == "1":
+        candidates.append(_REPO_ROOT.parent / "datasets")
+    candidates.append(Path("datasets"))    # CWD/datasets/       (dev convenience)
+    return tuple(candidates)
 
 
 def dataset_root() -> Path:
@@ -60,7 +70,7 @@ def dataset_root() -> Path:
     override = os.environ.get("PHM_DATASETS_DIR")
     if override:
         return Path(override).expanduser().resolve()
-    for c in _CANDIDATES:
+    for c in _candidate_dirs():
         if c.is_dir():
             return c.resolve()
     return _REPO_ROOT / "datasets"  # canonical best-guess, even if absent

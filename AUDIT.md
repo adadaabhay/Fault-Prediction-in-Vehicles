@@ -42,9 +42,9 @@ producing concrete artefacts (run logs, file lists, line refs):
    `c_engine/`, `tests/`, `docs/`, `.github/`, `info.md`.  Goal: build
    a mental model of the package's surface area.
 2. **Independence pass** — confirm the target repo has no live import,
-   symlink, or path reference back to the host monorepo.  The host's
-   `.gitignore` already excludes `Fault-Prediction-in-Vehicles/` and
-   vice versa.
+   symlink, or path reference outside its own working tree.  The
+   target is the entire product; nothing in it depends on a sibling
+   workspace.
 3. **Confidential-data pass** — confirm the repo ships no
    classification, no operator data, no internal measurements.  The
    only data on disk is synthetic; every external corpus is procured

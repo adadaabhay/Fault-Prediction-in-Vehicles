@@ -49,7 +49,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Optional pipelines for public-dataset benchmarks (host repo only; see DATA.md).
+# Optional pipelines for public-dataset benchmarks (see DATA.md).
 bench = [
     "lightgbm>=4.3,<5.0",
     "xgboost>=2.0,<3.0",
