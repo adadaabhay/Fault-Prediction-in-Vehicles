@@ -16,15 +16,18 @@ pip install playwright && python -m playwright install --with-deps chromium
 
 ```bash
 make verify           # ruff + mypy + fast tests
-make test             # full pytest, 317 passed / 30 skipped
+make test             # full pytest — see VERIFICATION.md for current counts
 make data             # regenerate per-subsystem CSVs and manifests
 python -m tools.check_artifacts    # model.json / config.json consistent
 python -m tools.check_links        # docs links not 404
 ```
 
-The 30 skipped tests are dataset-backed and dataset-gated; they show
-as SKIP, not ERROR, when the procurement copies under `datasets/` are
-absent.  See `docs/PROVENANCE.md` for the procurement step.
+The current pass / skip / fail counts are recorded in
+[`VERIFICATION.md`](VERIFICATION.md); the counts are not duplicated
+here because they drift every time the suite grows.  The skipped
+tests are dataset-backed and dataset-gated; they show as SKIP, not
+ERROR, when the procurement copies under `datasets/` are absent.  See
+`docs/PROVENANCE.md` for the procurement step.
 
 ## Pull requests
 

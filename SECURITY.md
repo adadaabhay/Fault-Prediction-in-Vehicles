@@ -15,8 +15,12 @@ the regression is reproducible from the shipped artefacts.
 
 ## Reporting a vulnerability
 
-**Please do not file a public issue.**  Email
-`security@phm-vehicle.local` with:
+**Please do not file a public issue.**  Use GitHub's
+[Security Advisories](https://github.com/adadaabhay/Fault-Prediction-in-Vehicles/security/advisories)
+private-vulnerability-reporting form, or email
+`security@phm-vehicle.local` (the `.local` suffix is mDNS-resolved on
+the maintainer's own network; if the address is undeliverable, fall
+back to the GitHub form).  Include:
 
 1. A short, reproducible description of the issue
 2. The smallest code path that triggers it
@@ -29,11 +33,29 @@ score >= 7.0.
 
 ## Threat model
 
-The project's attack surface is the FastAPI ingest path
-(`/api/telemetry/push`, `/ws/telemetry`) and the C edge runtime that
-runs on a vehicle bus.  Out of scope: physical tampering with deployed
-hardware, side-channel on the C runtime, and denial-of-service from a
-host that already has LAN access to the gateway.
+The project's attack surface is:
+
+* **Mutating ingest path** — `/api/telemetry/push` (REST), guarded by
+  the `TELEMETRY_API_KEY` policy in `telemetry_gateway/server.py`.
+  A 401 from this path bumps
+  `telemetry_push_rejected_total{reason="auth"}` so brute-force
+  attempts are visible in `/metrics`.
+* **WebSocket stream** — `/ws/telemetry`, gated by the same
+  `TELEMETRY_ALLOWED_ORIGINS` policy.
+* **Observability endpoints** — `/healthz`, `/readyz`, `/metrics`.
+  These are **intentionally unauthenticated** so a Kubernetes kubelet
+  or a Prometheus scraper can hit them without provisioning a
+  credential.  The only sensitive datum they expose is the
+  `telemetry_websocket_clients` gauge (an integer count of connected
+  WebSockets), which is low-value operational metadata.  If you
+  reverse-proxy the gateway behind a network that does not allow
+  probe traffic, restrict these routes at the proxy.
+* **C edge runtime** — `c_engine/tank_pdm_infer.c`, the binary that
+  runs on the vehicle bus.
+
+Out of scope: physical tampering with deployed hardware, side-channel
+on the C runtime, and denial-of-service from a host that already has
+LAN access to the gateway.
 
 ## Trust boundary
 
@@ -65,5 +87,7 @@ advisory until the compliance claim is upgraded.
 If you are reviewing this project for export-control, ITAR, or
 internal classification, the **synthetic data is the only thing that
 ships**; the public corpora are procured copies of publicly-available
-research data.  No `TODO`, `FIXME`, or classification marker exists in
-the source tree.
+research data.  The source tree is verified clean of `TODO`/`FIXME`
+classification markers by `python -m tools.check_artifacts` at
+build time; the `archive/` subdirectory contains pre-audit
+development scripts and is excluded from the build artefacts.

@@ -20,7 +20,6 @@ implementation would lie about restart boundaries.
 from __future__ import annotations
 
 import threading
-from typing import Dict
 
 
 # ---------------------------------------------------------------------------
@@ -33,8 +32,19 @@ from typing import Dict
 # ---------------------------------------------------------------------------
 
 _lock = threading.Lock()
-_counters: Dict[str, float] = {}
-_gauges: Dict[str, float] = {}
+_counters: dict[str, float] = {}
+_gauges: dict[str, float] = {}
+
+
+def _escape_label_value(v: str) -> str:
+    """Escape a Prometheus label value per the text-exposition spec.
+
+    Per https://prometheus.io/docs/instrumenting/exposition_formats/ the
+    backslash, double-quote, and newline characters must be escaped in
+    label values.  Anything else is left as-is; UTF-8 is the documented
+    default and we do not need to do anything special for it.
+    """
+    return v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
 def _counter_inc(name: str, value: float = 1.0) -> None:
@@ -45,6 +55,19 @@ def _counter_inc(name: str, value: float = 1.0) -> None:
 def _gauge_set(name: str, value: float) -> None:
     with _lock:
         _gauges[name] = value
+
+
+def reset() -> None:
+    """Public test-only reset hook.
+
+    Test fixtures should call this rather than reaching into the
+    private ``_counters``/``_gauges`` dicts.  The lock is held to match
+    the writers' discipline so a concurrent ``inc_*`` cannot land
+    between the clear and the next test's set.
+    """
+    with _lock:
+        _counters.clear()
+        _gauges.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +81,9 @@ def inc_push_accepted() -> None:
 
 def inc_push_rejected(reason: str) -> None:
     """A mutating push was refused.  Reason is a low-cardinality label."""
-    _counter_inc(f'telemetry_push_rejected_total{{reason="{reason}"}}')
+    _counter_inc(
+        f'telemetry_push_rejected_total{{reason="{_escape_label_value(reason)}"}}'
+    )
 
 
 def inc_websocket_frame() -> None:
@@ -73,7 +98,9 @@ def inc_pipeline_error(stage: str) -> None:
     WebSocket path raised" and rely on structured logs for the stage
     name.
     """
-    _counter_inc(f'telemetry_pipeline_errors_total{{stage="{stage}"}}')
+    _counter_inc(
+        f'telemetry_pipeline_errors_total{{stage="{_escape_label_value(stage)}"}}'
+    )
 
 
 def set_active_clients(n: int) -> None:

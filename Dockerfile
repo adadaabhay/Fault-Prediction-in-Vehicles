@@ -47,16 +47,19 @@ COPY tests ./tests
 # Resolve every wheel we need into /wheels, then install them into
 # /install.  --no-deps would be faster but we need transitive deps, so
 # we let pip resolve normally and rely on --no-cache-dir for size.
-RUN pip wheel --wheel-dir=/wheels --no-cache-dir -e ".[bench,observability]" || \
-    pip wheel --wheel-dir=/wheels --no-cache-dir -e ".[bench]"
+# ``.[bench]`` is the only extra the runtime needs — observability uses
+# the hand-rolled ``telemetry_gateway/metrics.py`` (no third-party
+# prometheus_client dep), and dev/test extras are not shipped in the
+# image.  The previous version requested a non-existent ``observability``
+# extra; the ``|| pip wheel ... [bench]`` fallback silently masked the
+# failure and produced a build that the maintainer could not reproduce.
+RUN pip wheel --wheel-dir=/wheels --no-cache-dir -e ".[bench]"
 
 FROM python:3.12-slim AS installer
 COPY --from=builder /wheels /wheels
 COPY --from=builder /build /build
 WORKDIR /build
-RUN pip install --no-cache-dir --no-index --find-links=/wheels \
-        "phm-vehicle[bench,observability]" || \
-    pip install --no-cache-dir --find-links=/wheels "phm-vehicle[bench]"
+RUN pip install --no-cache-dir --no-index --find-links=/wheels ".[bench]"
 
 # ---------------------------------------------------------------------------
 # Stage 2 — distroless runtime
@@ -88,12 +91,17 @@ ENV PYTHONPATH=/app \
     PORT_GATEWAY=8000 \
     PORT_DASHBOARD=8080
 
-# /healthz is the liveness endpoint; the gateway binds to 0.0.0.0:8000
-# when started with `python -m telemetry_gateway.server`.  The dashboard
-# is served by the same process's static mount when
-# TELEMETRY_DASHBOARD_DIR=/app/docs is set.
+# Probe /readyz, not /healthz.  Docker's HEALTHCHECK semantic is
+# "container is doing useful work, restart it if not" — closer to a
+# readiness/restart probe than a liveness probe.  /healthz is by
+# design a flat 200 if the worker is alive; that means a container
+# with a broken broker or pipeline would pass /healthz forever and
+# Docker would never restart it.  /readyz is 503 in that case, so
+# Docker restarts the container after ``--retries`` consecutive
+# failures.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD ["python", "-c", "import urllib.request,sys; \
+sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2).status == 200 else 1)"]
 sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status == 200 else 1)"]
 
 EXPOSE 8000 8080

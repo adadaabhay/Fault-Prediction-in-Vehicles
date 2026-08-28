@@ -112,17 +112,25 @@ def _require_api_key(request: Request) -> None:
       3. Otherwise (remote caller, no key configured) the request is refused.
          This is the case that used to be wide open: any host on the network
          could write vehicle health state with no credential at all.
+
+    A refused caller bumps ``telemetry_push_rejected_total{reason="auth"}``
+    so brute-force attempts against an unauthenticated endpoint surface in
+    ``/metrics``.  The metric is bumped *before* the HTTPException is raised
+    so the counter is incremented even when the framework's exception
+    handler short-circuits the response.
     """
     if API_KEY:
         supplied = (request.headers.get("x-api-key")
                     or request.headers.get("authorization", "")
                     .removeprefix("Bearer ").strip())
         if not supplied or not hmac.compare_digest(supplied, API_KEY):
+            inc_push_rejected("auth")
             raise HTTPException(status_code=401,
                                 detail="Invalid or missing API key")
         return
     if ALLOW_ANONYMOUS or _is_loopback(request):
         return
+    inc_push_rejected("auth")
     raise HTTPException(
         status_code=401,
         detail="Remote ingest requires TELEMETRY_API_KEY to be configured.")
@@ -163,10 +171,12 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        set_active_clients(len(self.active_connections))
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
+        set_active_clients(len(self.active_connections))
 
     async def broadcast_json(self, message: dict):
         for connection in list(self.active_connections):
@@ -239,9 +249,17 @@ async def readyz() -> JSONResponse:
     except Exception as exc:
         logger.warning("readyz: pipeline not initialised: %s", exc)
         checks["pipeline"] = False
+    # A listener is "ready" only if it has been *started* (not None) and
+    # is currently *running*.  ``None`` means "never bound" — the test
+    # process never calls ``start_all_listeners()`` and the production
+    # lifespan also leaves them as ``None`` today; in both cases the
+    # gateway is not actually ingesting hardware telemetry, and the
+    # readiness probe must reflect that.  The previous
+    # ``None or is_running`` predicate short-circuited to ``True`` and
+    # made this branch vacuous.
     checks["listeners"] = (
-        (udp_listener is None or udp_listener.is_running)
-        and (serial_listener is None or serial_listener.is_running)
+        (udp_listener is not None and udp_listener.is_running)
+        or (serial_listener is not None and serial_listener.is_running)
     )
     set_pipeline_ready(all(checks.values()))
     status_code = 200 if all(checks.values()) else 503
@@ -268,9 +286,18 @@ async def push_telemetry_endpoint(request: Request):
 
     Guarded: API key, per-client rate limit, and a payload cap. Previously this
     endpoint was completely open -- any host could write vehicle health state.
+
+    Instrumentation contract:
+      * ``telemetry_push_accepted_total`` is bumped **once** per request, only
+        after every guard (auth, rate-limit, payload-cap, parse, type-check)
+        has passed.  A request that fails any guard is reflected in
+        ``telemetry_push_rejected_total{reason=...}`` and never in
+        ``telemetry_push_accepted_total`` -- the two series are mutually
+        exclusive, not cumulative.
+      * The 500 path bumps ``telemetry_push_rejected_total{reason="ingest"}``
+        so a downstream broker failure is visible in /metrics.
     """
     _require_api_key(request)
-    inc_push_accepted()
 
     client = request.client.host if request.client else "unknown"
     if not _rate_limit_ok(client):
@@ -279,18 +306,22 @@ async def push_telemetry_endpoint(request: Request):
 
     declared = request.headers.get("content-length")
     if declared and int(declared) > MAX_PAYLOAD_BYTES:
+        inc_push_rejected("payload_cap")
         raise HTTPException(status_code=413,
                             detail=f"Payload exceeds {MAX_PAYLOAD_BYTES} bytes")
     body = await request.body()
     if len(body) > MAX_PAYLOAD_BYTES:
+        inc_push_rejected("payload_cap")
         raise HTTPException(status_code=413,
                             detail=f"Payload exceeds {MAX_PAYLOAD_BYTES} bytes")
     try:
         payload = json.loads(body)
     except Exception as exc:
+        inc_push_rejected("parse")
         raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {str(exc)}")
 
     if not isinstance(payload, (dict, list)):
+        inc_push_rejected("parse")
         raise HTTPException(status_code=400, detail="Payload must be a JSON object or array of objects")
 
     # If payload is wrapped like {"sensors": {...}, "source": "http"}
@@ -303,9 +334,11 @@ async def push_telemetry_endpoint(request: Request):
         source = "http"
         data = payload
 
+    inc_push_accepted()
     try:
         processed_frame = broker.push_telemetry(data, source=source)
     except Exception as exc:
+        inc_push_rejected("ingest")
         raise HTTPException(status_code=500, detail=f"Failed to ingest telemetry: {str(exc)}")
 
     return {
@@ -508,9 +541,19 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-    except Exception as exc:
-        # A bare `except Exception: disconnect()` hid every pipeline error
-        # behind a clean-looking client disconnect.
+    except (ConnectionResetError, RuntimeError) as exc:
+        # Client-abort / closed-loop errors.  These are expected when
+        # a dashboard tab is closed mid-frame and should not be treated
+        # as a pipeline failure.  ``logger.exception`` already appends
+        # the formatted traceback; passing ``exc`` to ``%s`` would
+        # double-print the exception string.
         inc_pipeline_error("websocket_broadcast")
-        logger.exception("telemetry websocket failed: %s", exc)
+        logger.info("telemetry websocket closed: %s", exc)
+        manager.disconnect(websocket)
+    except Exception:
+        # Anything else is a real pipeline / encoding bug.  ``logger.exception``
+        # already records the traceback at ERROR; we do not re-format ``exc``
+        # into the message or the traceback is duplicated.
+        inc_pipeline_error("websocket_broadcast")
+        logger.exception("telemetry websocket failed")
         manager.disconnect(websocket)
