@@ -20,3 +20,8 @@ mypy>=1.10,<2.0
 
 # Coverage
 coverage>=7.5,<8.0
+
+# Successor to `httpx` for starlette's TestClient (test-only).
+# Starlette emits a StarletteDeprecationWarning when `httpx` is used
+# with TestClient and asks users to install `httpx2` instead.
+httpx2>=2.0,<3.0

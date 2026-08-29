@@ -34,7 +34,7 @@ classifiers = [
 # Production runtime dependencies -- pinned for reproducible numerics.
 # These are duplicated in requirements.txt for environments that prefer pip-tools.
 dependencies = [
-    "numpy>=1.26,<3.0",
+    "numpy>=1.24,<3.0",
     "pandas>=2.0,<3.0",
     "scipy>=1.11,<2.0",
     "fastapi>=0.110,<1.0",
@@ -68,6 +68,10 @@ dev = [
     "coverage>=7.5,<8.0",
     "playwright>=1.44,<2.0",
     "hypothesis>=6.100,<7.0",
+    # Successor to `httpx` for starlette's TestClient.  Starlette emits a
+    # `StarletteDeprecationWarning` when `httpx` is used with TestClient
+    # and asks users to install `httpx2` instead.  Test-only.
+    "httpx2>=2.0,<3.0",
 ]
 
 [project.urls]
