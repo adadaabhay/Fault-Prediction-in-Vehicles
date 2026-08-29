@@ -30,6 +30,16 @@ class TestMetroPTLabelsComeFromReports(unittest.TestCase):
     """Labels must derive from the company failure reports, not from a
     percentile of the motor-current channel they are predicted from."""
 
+    @classmethod
+    def setUpClass(cls):
+        # MetroPT3 is a procured dataset (gitignored).  When absent, the
+        # class is a no-op skip -- not an ERROR.  See AUDIT.md §2 and
+        # docs/PROVENANCE.md for the procurement step.
+        try:
+            cls.df = load_metropt_episodes()
+        except FileNotFoundError as exc:
+            raise unittest.SkipTest(f"MetroPT3 dataset absent: {exc}")
+
     def test_failure_windows_match_data_description(self):
         w = failure_windows()
         self.assertEqual(len(w), 4)
@@ -76,6 +86,18 @@ class TestMetroPTLabelsComeFromReports(unittest.TestCase):
 class TestDeutzDeclaresHeuristicProvenance(unittest.TestCase):
     """Deutz ships no fault labels; the derived indicator must say so."""
 
+    @classmethod
+    def setUpClass(cls):
+        # Deutz testbench is a procured dataset (gitignored).  When
+        # absent, the class is a no-op skip -- not an ERROR.  The
+        # existing ``test_residuals_align_bench_to_cfd`` already used
+        # this pattern; the rest of the class is brought into line so
+        # the absence of procurement copies does not break the gate.
+        try:
+            cls.df = load_deutz_nrtc_data()
+        except FileNotFoundError as exc:
+            raise unittest.SkipTest(f"Deutz testbench dataset absent: {exc}")
+
     def test_provenance_is_declared_heuristic(self):
         self.assertEqual(LABEL_PROVENANCE, "heuristic_derived")
         df = load_deutz_nrtc_data()
@@ -118,7 +140,16 @@ class TestZeMASamplingIsNotHeadSliced(unittest.TestCase):
     selects a single condition and removes the degradation being demonstrated."""
 
     def setUp(self):
-        self.df = load_zema_hydraulic_data()
+        # ZeMA is a procured dataset (gitignored).  When absent, skip
+        # the test -- the sampling guards below cannot run without
+        # the data.  The pre-fix behaviour was an ERROR at setUp
+        # time, which the strict CI gate (--strict-config,
+        # --strict-markers) reports as a setup failure rather than a
+        # pass.
+        try:
+            self.df = load_zema_hydraulic_data()
+        except FileNotFoundError as exc:
+            self.skipTest(f"ZeMA dataset absent: {exc}")
 
     def test_head_slice_is_degenerate(self):
         """Documents why stratified sampling exists; if this ever stops being
@@ -150,7 +181,16 @@ class TestNavalGasTurbineTargets(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.df = load_naval_propulsion_data()
+        # Naval propulsion is a procured dataset (gitignored).  When
+        # absent, the class is a no-op skip -- not an ERROR.  The
+        # previous code raised FileNotFoundError from setUpClass,
+        # which pytest reports as a setup error rather than a skip
+        # and breaks the gate even though the data is by definition
+        # optional.
+        try:
+            cls.df = load_naval_propulsion_data()
+        except FileNotFoundError as exc:
+            raise unittest.SkipTest(f"naval propulsion dataset absent: {exc}")
 
     def test_targets_are_continuous_and_multi_level(self):
         for t in NAVAL_TARGETS:

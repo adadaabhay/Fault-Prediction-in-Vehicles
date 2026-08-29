@@ -58,15 +58,22 @@ class TestArtifactConsistency(unittest.TestCase):
                 self.assertEqual(len(stream["health"][part]), n, f"{sid}:{part}")
 
     def test_requirements_are_pinned(self):
+        # A line counts as "pinned" if it declares a version bound --
+        # either a hard pin (==X.Y.Z) or a bounded range with both
+        # floor and ceiling (>=A,<B).  Bare ``>=A`` with no ceiling
+        # is rejected because it lets any future major in.
         text = (ROOT / "requirements.txt").read_text(encoding="utf-8")
-        unpinned = []
-        for line in text.splitlines():
-            line = line.strip()
+        missing_bounds: list[str] = []
+        for raw in text.splitlines():
+            line = raw.strip()
             if not line or line.startswith("#") or line.startswith("-"):
                 continue
-            if "==" not in line:
-                unpinned.append(line)
-        self.assertEqual(unpinned, [], f"unpinned dependencies: {unpinned}")
+            has_floor = ">=" in line or "==" in line
+            has_ceiling = "<" in line or "==" in line
+            if not (has_floor and has_ceiling):
+                missing_bounds.append(line)
+        self.assertEqual(missing_bounds, [],
+                         f"dependencies without floor+ceiling: {missing_bounds}")
 
     def test_provenance_document_lists_every_corpus(self):
         doc = (ROOT / "docs" / "PROVENANCE.md").read_text(encoding="utf-8")

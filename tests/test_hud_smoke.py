@@ -1,8 +1,9 @@
 """End-to-end smoke test for the docs/ HUD.
 
 This is the only test that exercises the published artifacts in a real
-browser.  It opens ``docs/index.html`` over ``file://`` (the same
-source GitHub Pages serves) and asserts:
+browser.  It starts a local HTTP server rooted at ``docs/`` (the same
+source GitHub Pages serves, just over ``http://localhost:PORT/``
+instead of ``file://``) and asserts:
 
   1. The page loads without raising any uncaught JS exception **or**
      emitting a ``console.error`` (the ``init().catch`` path writes
@@ -21,6 +22,15 @@ source GitHub Pages serves) and asserts:
      a 2xx response with a non-parseable body is correctly routed
      to ``error`` (a build defect, not a mid-deploy state).
 
+Why HTTP and not ``file://``: the dashboard's ``init()`` does
+``fetch('config.json')`` and ``fetch('model.json')`` for the
+retrain-chip probe.  CORS disallows ``fetch`` from a ``file://``
+origin, so the chip would always land in the ``error`` state and
+every positive assertion would fail for an environmental reason
+unrelated to the code under test.  Serving from a real origin
+matches the production deployment (GitHub Pages over https) and
+unifies the test path with the deploy path.
+
 The test follows the same opt-in pattern as the rest of the suite
 (``tests/test_hil_ingest.py``, ``tests/test_fdir_on_real_data.py``):
 the import is wrapped in a try/except, the test class is
@@ -36,13 +46,19 @@ Install: ``pip install playwright && playwright install chromium``
 
 from __future__ import annotations
 
+import contextlib
 import importlib
+import http.server
+import socket
+import socketserver
 import sys
+import threading
 import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 DOCS_INDEX = REPO / "docs" / "index.html"
+DOCS_ROOT = REPO / "docs"
 
 # Static REMEDIATION ROUND 1 chips, in declaration order.  Sourced
 # from ``docs/index.html`` lines 68-72; the test will fail with a
@@ -107,6 +123,50 @@ def _chromium_is_launchable(pw) -> bool:
         return False
 
 
+def _start_docs_server(root: Path) -> tuple[socketserver.TCPServer, str]:
+    """Serve ``root`` over HTTP on a free localhost port; return
+    ``(server, base_url)``.
+
+    Why we need this (and why ``file://`` won't work): the dashboard's
+    ``init()`` does ``fetch('config.json')`` and ``fetch('model.json')``
+    to drive the retrain chip.  CORS blocks ``fetch`` from a
+    ``file://`` origin, so the chip would always land in the
+    ``error`` state under the old ``file://`` test and every
+    positive assertion would fail for an environmental reason.  A
+    localhost server matches the production deploy (GitHub Pages
+    over https) closely enough that the test path and the deploy
+    path share the same fetch + CORS semantics.
+
+    The port is allocated by binding to port 0 and reading back the
+    assigned number, so a parallel test run does not race.  The
+    server thread is a daemon so it dies with the interpreter if
+    ``shutdown()`` is somehow skipped.
+    """
+
+    class _Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(root), **kwargs)
+
+        def log_message(self, *_args, **_kwargs):
+            # Silence the per-request access log during tests;
+            # failures are still visible via the pageerror / console
+            # listeners in the test class.
+            return
+
+    class _ThreadingServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+        allow_reuse_address = True
+
+    # Pick a port the OS finds for us; using ThreadingMixIn so a
+    # page.route() handler that blocks the event loop does not
+    # deadlock the test client.
+    httpd = _ThreadingServer(("127.0.0.1", 0), _Handler)
+    port = httpd.server_address[1]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    return httpd, f"http://127.0.0.1:{port}/index.html"
+
+
 @unittest.skipUnless(HAVE, "playwright not installed or docs/index.html missing")
 class TestHudSmoke(unittest.TestCase):
     """End-to-end checks against the published HUD."""
@@ -119,10 +179,15 @@ class TestHudSmoke(unittest.TestCase):
         # ml package shows as a single, actionable skip rather than
         # blocking the whole module from importing.
         cls.health_exclude_params = _load_health_exclude_params()
-        cls.url = DOCS_INDEX.as_uri()
+        # Spin up a single-shot HTTP server rooted at docs/ so the
+        # dashboard's fetch() calls for config.json / model.json are
+        # allowed by CORS.  See module docstring for why file:// is
+        # not viable here.
+        cls._httpd, cls.url = _start_docs_server(DOCS_ROOT)
         cls._pw = sync_playwright().start()
         if not _chromium_is_launchable(cls._pw):
             cls._pw.stop()
+            cls._httpd.shutdown()
             raise unittest.SkipTest(
                 "playwright python is installed but the chromium binary "
                 "is not; run `playwright install chromium`"
@@ -145,6 +210,15 @@ class TestHudSmoke(unittest.TestCase):
         cls._ctx.close()
         cls._browser.close()
         cls._pw.stop()
+        # ThreadingHTTPServer.shutdown() blocks until serve_forever()
+        # returns; the daemon thread joins on its own.  Wrapped in a
+        # try/except so a tearDown on a half-initialised class
+        # (e.g. chromium missing) does not raise.
+        try:
+            cls._httpd.shutdown()
+        except Exception:  # pragma: no cover - teardown-only
+            pass
+        cls._httpd.server_close()
 
     def setUp(self):
         # Per-test reset so the assertion in test_01 can read the
