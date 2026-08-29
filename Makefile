@@ -44,7 +44,13 @@ test: ## run the test suite
 
 .PHONY: test-cov
 test-cov: ## run the test suite with coverage
-	$(PYTEST) --cov=phm_vehicle --cov-report=term-missing
+	$(PYTEST) \
+		--cov=telemetry_gateway \
+		--cov=ml \
+		--cov=sim \
+		--cov=c_engine \
+		--cov=tools \
+		--cov-report=term-missing
 
 .PHONY: test-hud
 test-hud: ## browser-driven HUD smoke tests (requires playwright browsers)

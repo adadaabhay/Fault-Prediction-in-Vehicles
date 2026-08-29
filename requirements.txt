@@ -1,23 +1,31 @@
-# Production runtime dependencies -- pinned for reproducible numerics
-# Core numerics & physics
-numpy==2.4.6
-pandas==3.0.5
-scipy==1.18.0
-joblib==1.5.3
+# Production runtime dependencies -- pinned for reproducible numerics.
+#
+# These are kept in lock-step with the ranges declared in
+# pyproject.toml [project.dependencies].  If you bump a range in
+# pyproject.toml, regenerate this file with:
+#
+#     pip-compile pyproject.toml --extra=bench --extra=hardware
+#
+# and update the comment in pyproject.toml to point at the new pin.
+# Do not hand-edit the version pins here without updating pyproject.
+#
+# Install with:  pip install -r requirements.txt
 
-# Machine learning & benchmarks
-scikit-learn==1.9.0
-lightgbm==4.7.0
+# Core numerics & physics
+numpy>=1.26,<3.0
+pandas>=2.0,<3.0
+scipy>=1.11,<2.0
+joblib>=1.3,<2.0
+
+# Machine learning (the `bench` extra adds lightgbm, xgboost, catboost)
+scikit-learn>=1.4,<2.0
 
 # Ingestion & Telemetry Gateway
-fastapi==0.141.1
-uvicorn==0.52.3
-requests==2.34.2
-h5py==3.16.0
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27,<1.0
+requests>=2.31,<3.0
+h5py>=3.10,<4.0
 # Serial hardware ingest (SerialSensorListener)
-pyserial==3.5
+pyserial>=3.5,<4.0
 # WebSocket transport layer (starlette/fastapi dependency)
-websockets==14.1
-
-# Testing & Verification
-pytest==9.1.1
+websockets>=12,<15

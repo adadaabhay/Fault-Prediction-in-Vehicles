@@ -79,19 +79,27 @@ Fault-Prediction-in-Vehicles/
 │   └── generators/       Per-subsystem sensor data generators + master CLI
 ├── telemetry_gateway/    FastAPI ingest + WebSocket broadcast + J1939
 ├── tools/                Developer / CI entry points
+├── pipelines/            Public-corpora ingesters (MetroPT, ZeMA, Scania, …)
+├── benchmark/            Multi-subsystem benchmark harness
 ├── docs/                 Web command HUD (HTML/JS/CSS + model + streams)
 ├── tests/                Unit, integration, parity, adversarial, HUD-smoke
 ├── data/                 (gitignored) generated CSVs and manifests
 ├── results/              (gitignored) runtime artefacts
+├── .github/              CI workflows + Dependabot config
 ├── pyproject.toml        Installable package + lint/type/test configuration
 ├── requirements.txt      Pinned runtime dependencies
 ├── requirements-dev.txt  Pinned dev / lint / test dependencies
+├── Dockerfile            Multi-stage, distroless final, non-root
 ├── Makefile              Common commands (`make help` for the list)
 ├── LICENSE               Apache-2.0
 ├── README.md             (this file)
 ├── DATA.md               Datasets manifest (sources, licences, SHA-256)
 ├── ARCHITECTURE.md       Subsystem ↔ module map, deployment topology
-└── CHANGELOG.md          Release history (keep-a-changelog)
+├── CHANGELOG.md          Release history (keep-a-changelog)
+├── SECURITY.md           Threat model + vulnerability reporting
+├── CODE_OF_CONDUCT.md    Contributor Covenant v2.1
+├── CONTRIBUTING.md       Dev setup, PR invariants, review agents
+└── VERIFICATION.md       End-to-end acceptance sign-off
 ```
 
 ## Quickstart
@@ -135,13 +143,17 @@ data/simulated/
 
 ## Requirements
 
-Runtime: **Python 3.10+**, NumPy 1.26+, FastAPI 0.110+, scikit-learn 1.4+.
+Runtime: **Python 3.10+** (3.11 / 3.12 supported; see `pyproject.toml`
+`classifiers`).  The full set of runtime + optional dependency ranges is
+declared in [`pyproject.toml`](pyproject.toml) under `[project.dependencies]`
+and `[project.optional-dependencies]`.  `pip install -e ".[dev,bench]"` is
+the canonical install.
 
-The full list, pinned for reproducible numerics, lives in
-[`requirements.txt`](requirements.txt).  Dev / lint / test dependencies are
-in [`requirements-dev.txt`](requirements-dev.txt).  Both lists are also
-embedded in [`pyproject.toml`](pyproject.toml) so `pip install -e .` is
-sufficient on its own.
+A pinned snapshot for environments that prefer pip-tools lives in
+[`requirements.txt`](requirements.txt) (runtime) and
+[`requirements-dev.txt`](requirements-dev.txt) (dev / lint / test).  These
+are kept in lock-step with `pyproject.toml`; do not hand-edit one
+without the other.
 
 External datasets are **not** required to run the simulator — every
 generator here emits synthetic data from `sim.tank.TankSimulator`.  See

@@ -134,8 +134,10 @@ The package uses a **flat layout** (top-level `telemetry_gateway/`,
 * `c_engine/` needs to be buildable in place by CMake; moving it
   under `src/` would require a `find_package` rewrite and a
   regenerated `tank_pdm_weights.bin` location.
-* The legacy `sim/scripts/` package re-exports the new
-  `sim/generators/` modules, so older invocations still work.
+* The single CLI surface (`phm-generate`, `phm-check-artifacts`,
+  `phm-check-links`, `phm-server`) is declared in
+  `[project.scripts]` of `pyproject.toml`; the entry-point paths
+  are the module paths themselves, with no `phm_vehicle.*` shim.
 
 The trade-off is that the `phm_vehicle` namespace does not exist; the
 package installs as `phm-vehicle` (distribution name) but the import
