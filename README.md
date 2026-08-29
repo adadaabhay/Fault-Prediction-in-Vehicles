@@ -21,16 +21,20 @@ and full documentation of the data contract.
 ## Table of contents
 
 1. [What this is](#what-this-is)
-2. [Repository layout](#repository-layout)
-3. [Quickstart](#quickstart)
-4. [Requirements](#requirements)
-5. [Generate sensor data](#generate-sensor-data)
-6. [Run the gateway + HUD](#run-the-gateway--hud)
-7. [Build the C edge runtime](#build-the-c-edge-runtime)
-8. [Verification](#verification)
-9. [Documentation](#documentation)
-10. [Datasets](#datasets)
-11. [License](#license)
+2. [Sensor families and governing physics](#sensor-families-and-governing-physics)
+3. [Repository layout](#repository-layout)
+4. [Quickstart](#quickstart)
+5. [Requirements](#requirements)
+6. [Generate sensor data](#generate-sensor-data)
+7. [Programmatic use](#programmatic-use)
+8. [Run the gateway + HUD](#run-the-gateway--hud)
+9. [Build the C edge runtime](#build-the-c-edge-runtime)
+10. [Live dashboard (GitHub Pages)](#live-dashboard-github-pages)
+11. [Regenerate model + stream](#regenerate-model--stream)
+12. [Verification](#verification)
+13. [Documentation](#documentation)
+14. [Datasets](#datasets)
+15. [License](#license)
 
 ---
 
@@ -66,6 +70,35 @@ The project targets defense-grade deployment: provenance-pinned weights,
 deterministic sensor noise, a label-leakage test suite, parity tests
 across the Python / JavaScript / C implementations, and a JSON manifest
 sidecar on every generated dataset.
+
+## Sensor families and governing physics
+
+Every sensor below is simulated from a closed-form physics equation
+(documented in `Physics_Based_Sensor_Equations_Vehicle_Preventive_Maintenance.docx`)
+and coupled through an evolving shared vehicle state, so that an
+injected fault degrades the affected readings in a physically
+consistent way.  The resulting labelled dataset feeds the AI
+pipeline for anomaly detection, fault diagnosis and RUL prediction.
+
+```
+Sensors -> Physics-Based Features -> Vehicle State -> AI -> Anomaly / Fault / RUL
+```
+
+| #  | Sensor                | Physics                                                                 | Key features                            | Associated fault                |
+|----|-----------------------|-------------------------------------------------------------------------|-----------------------------------------|---------------------------------|
+| 1  | Vibration (accelerometer) | `a = d²x/dt²`, `x = A·sin(2πft+φ)`                                   | RMS, kurtosis, FFT peaks, BPFO/BPFI     | Bearing / gear wear              |
+| 2  | Engine / exhaust temperature | `m·cₚ·dT/dt = Q̇_gen − Q̇_cool − Q̇_exh`, `R = R₀(1+αΔT)`      | Temperature trend                       | Overheating / cooling failure    |
+| 3  | Oil pressure          | `ΔP = 8μLQ/(πr⁴)`, `μ(T) = A·e^{E/RT}`                                  | Pressure deviation vs. speed/load/temp  | Pump / leakage / blockage        |
+| 4  | Oil debris            | Inductive `L ≈ μN²A/l`, `ṅₚ = dNₚ/dt`                                   | Particle count & rate                   | Accelerated wear                 |
+| 5  | Torque                | `P = τω`, `τ = Tr/J`, `ω = 2πN/60`                                      | Torque / power / shear                  | Load / efficiency degradation    |
+| 6  | Exhaust               | `PV = nRT`, `ṁ = ρAv`, `λ`                                              | EGT, pressure, λ, O₂                    | Combustion abnormality           |
+| 7  | Fluid levels          | `C = εA/d`, `V = πr²h`                                                   | Level / volume / capacitance            | Leakage / depletion              |
+| 8  | Hydraulics            | `P = F/A`, `P_hyd = PQ`                                                  | Pressure–flow relation                   | Pump / valve / seal fault        |
+| 9  | Suspension strain     | `σ = Eε`, `ΔR/R = GF·ε`                                                  | Strain / load                           | Fatigue / overload               |
+| 10 | Torsion bar           | `θ = TL/JG`, `T = JGθ/L`                                                 | Twist / torque history                  | Torsion-bar fatigue              |
+| 11 | Shock                 | `F = ma`, `a_RMS`                                                        | RMS / peak g                            | Terrain / component loading      |
+| 12 | Acoustic              | `p(t) = P₀ + A·sin(2πft)`, `SPL = 20·log₁₀(p/p_ref)`                     | SPL, FFT signatures                     | Gear / bearing noise             |
+| 13 | Acoustic emission     | Wave equation, event features                                            | Event rate / energy                     | Crack / impact / friction        |
 
 ## Repository layout
 
@@ -162,6 +195,24 @@ pipelines in this repo's `pipelines/` consume.
 
 ## Generate sensor data
 
+Two entry points are available — the master `main.py` for a single
+flat CSV, and `tools.generate_sensor_data` for the per-subsystem
+layout that downstream training and the dashboard expect.
+
+```bash
+# Single flat CSV with raw + physics-derived features + labels
+python main.py --steps 12000 \
+    --faults bearing_wear,cooling_failure,oil_pump_degradation \
+    --out data/sim_dataset.csv
+```
+
+The CSV contains raw sensor readings, physics-derived features
+(`vib_rms`, `vib_kurtosis`, `spl_db`, `debris_rate`, …), a fused
+`health_index` (0–100), an extrapolated `rul_steps` estimate, an
+`anomaly_score`, and one-hot `fault_*` label columns.
+
+For the per-subsystem layout used by training and the HUD:
+
 ```bash
 # One CSV per subsystem, 500 steps, fault-free
 python -m tools.generate_sensor_data --subsystem all --steps 500
@@ -193,6 +244,53 @@ generator (the lubrication and cooling sensors are co-located on the
 powerpack); they run the same simulation and publish a different
 channel view.
 
+### Available fault profiles
+
+The simulator ships with 12 fault profiles, registered in
+`sim.faults.FaultManager.FAULT_MAP`:
+
+```
+bearing_wear                  gear_wear
+cooling_failure               oil_pump_degradation
+bearing_clearance_wear        seal_leakage
+fuel_injector_fault           exhaust_restriction
+torsion_fatigue               hydraulic_valve_fault
+structural_crack              drivetrain_efficiency_loss
+```
+
+Each profile implements a deterministic ramp from `start_step` to
+`start_step + ramp_steps`, parameterised so a healthy machine stays
+green for the first portion of the run and a labelled fault window
+appears for the second.
+
+## Programmatic use
+
+The simulator is a flat Python package — `sim.config`, `sim.faults`,
+`sim.tank`, `sim.dataset` — so a downstream tool can import any of
+its primitives without going through the CLI:
+
+```python
+import numpy as np
+from sim.config import TankConfig
+from sim.faults import FaultManager
+from sim.tank import TankSimulator
+from sim.dataset import write_dataset
+
+fm = FaultManager(np.random.default_rng(0))
+fm.add("bearing_wear", start_step=3000, ramp_steps=1500)
+fm.add("cooling_failure", start_step=6000, ramp_steps=1500)
+
+sim = TankSimulator(TankConfig(), faults=fm, seed=0)
+records = sim.run()                  # list of dict records
+write_dataset(sim, "data/run.csv")   # CSV with health features + labels
+```
+
+The fused `health_index` is computed in `sim.features` from the
+vibration RMS/kurtosis, oil temperature/pressure, debris rate, AE
+activity, structural stress and lambda channels, per §15 of the
+physics document.  `rul_steps` is obtained by linear extrapolation
+of the health-index trajectory to the failure threshold, per §16.
+
 ## Run the gateway + HUD
 
 ```bash
@@ -211,6 +309,41 @@ replay stream from `docs/live_stream.json`.  The CI gate
 `phm-check-artifacts` (alias for `python -m tools.check_artifacts`)
 verifies the two are mutually consistent before deploy.
 
+## Live dashboard (GitHub Pages)
+
+A self-contained dashboard is published at
+<https://sheenapravin.github.io/Fault-Prediction-in-Vehicles/>
+(source in `docs/`, deployed automatically by
+`.github/workflows/pages.yml` on every push to the active branch).
+
+* **Live feed** — streams physics-simulated telemetry in real time
+  with play/pause and 1–10× speed control.
+* **Clickable modules** — select any subsystem card (engine,
+  powertrain, lubrication, cooling, hydraulics, suspension, structure)
+  to open a detail view with live parameter trends, per-module LSTM
+  RUL and its detection history.
+* **Failure-mode log** — every warning/critical threshold crossing,
+  health-failure crossing and AI fault-mode classification is
+  timestamped with mission time.
+* **Per-module RUL** — a pure-JS LSTM forward pass (`docs/lstm.js`)
+  runs the trained weights (`docs/model.json`) in the browser.
+
+## Regenerate model + stream
+
+After changing the simulator or training configuration, regenerate
+the model weights and the live replay stream:
+
+```bash
+python -m ml.train --epochs 28 --stride 8 --demo-steps 3000
+```
+
+The training script writes the regenerated `docs/model.json` and
+the per-subsystem replay CSVs consumed by the dashboard.  The
+`phm-check-artifacts` gate then verifies the artifacts are
+self-consistent (D, R, C dimensions match the schema, every input
+feature has a scaler entry, every dashboard button has a stream)
+before any deploy.
+
 ## Build the C edge runtime
 
 ```bash
@@ -226,14 +359,25 @@ the coding rules the implementation follows.
 
 ## Verification
 
+The full suite runs under either pytest or the stdlib
+`unittest` discover entry — the latter is provided for
+environments where the dev extra is not installed:
+
 ```bash
+# pytest (preferred; honours markers and the strict CI gate)
 make test                      # full pytest run
 make test-fast                 # skip slow / hud / hil markers
 make test-cov                  # coverage report
 make test-hud                  # browser-driven smoke tests (requires playwright)
 make verify                    # lint + fast tests (CI-style local gate)
 make typecheck                 # mypy (advisory)
+
+# stdlib fallback (no dev extras required)
+python -m unittest discover -s tests -v
 ```
+
+The suite is organised by markers so a partial gate (e.g. a CI job that
+lacks the hardware rig) can skip what it cannot run:
 
 The suite is organised by markers so a partial gate (e.g. a CI job that
 lacks the hardware rig) can skip what it cannot run:
