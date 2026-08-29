@@ -29,12 +29,11 @@ and full documentation of the data contract.
 7. [Programmatic use](#programmatic-use)
 8. [Run the gateway + HUD](#run-the-gateway--hud)
 9. [Build the C edge runtime](#build-the-c-edge-runtime)
-10. [Live dashboard (GitHub Pages)](#live-dashboard-github-pages)
-11. [Regenerate model + stream](#regenerate-model--stream)
-12. [Verification](#verification)
-13. [Documentation](#documentation)
-14. [Datasets](#datasets)
-15. [License](#license)
+10. [Regenerate model + stream](#regenerate-model--stream)
+11. [Verification](#verification)
+12. [Documentation](#documentation)
+13. [Datasets](#datasets)
+14. [License](#license)
 
 ---
 
@@ -307,26 +306,9 @@ make serve-hud                 # http://localhost:8080
 The dashboard reads its model from `docs/model.json` and its
 replay stream from `docs/live_stream.json`.  The CI gate
 `phm-check-artifacts` (alias for `python -m tools.check_artifacts`)
-verifies the two are mutually consistent before deploy.
-
-## Live dashboard (GitHub Pages)
-
-A self-contained dashboard is published at
-<https://sheenapravin.github.io/Fault-Prediction-in-Vehicles/>
-(source in `docs/`, deployed automatically by
-`.github/workflows/pages.yml` on every push to the active branch).
-
-* **Live feed** — streams physics-simulated telemetry in real time
-  with play/pause and 1–10× speed control.
-* **Clickable modules** — select any subsystem card (engine,
-  powertrain, lubrication, cooling, hydraulics, suspension, structure)
-  to open a detail view with live parameter trends, per-module LSTM
-  RUL and its detection history.
-* **Failure-mode log** — every warning/critical threshold crossing,
-  health-failure crossing and AI fault-mode classification is
-  timestamped with mission time.
-* **Per-module RUL** — a pure-JS LSTM forward pass (`docs/lstm.js`)
-  runs the trained weights (`docs/model.json`) in the browser.
+verifies the two are mutually consistent before any consumer
+(local serve, downstream release, or partner integration) loads
+them.
 
 ## Regenerate model + stream
 
@@ -342,7 +324,7 @@ the per-subsystem replay CSVs consumed by the dashboard.  The
 `phm-check-artifacts` gate then verifies the artifacts are
 self-consistent (D, R, C dimensions match the schema, every input
 feature has a scaler entry, every dashboard button has a stream)
-before any deploy.
+before the dashboard consumes the new artifacts.
 
 ## Build the C edge runtime
 
