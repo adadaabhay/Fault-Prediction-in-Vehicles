@@ -54,6 +54,7 @@ import socketserver
 import sys
 import threading
 import unittest
+import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -167,6 +168,61 @@ def _start_docs_server(root: Path) -> tuple[socketserver.TCPServer, str]:
     return httpd, f"http://127.0.0.1:{port}/index.html"
 
 
+@contextlib.contextmanager
+def _artifact_probe_override(url: str, on_second_call):
+    """Context manager that installs a ``page.route`` handler which
+    serves the real ``config.json`` / ``model.json`` on the FIRST
+    request for each (so ``init()`` can render the page) and then
+    delegates every subsequent request for the same URL to
+    ``on_second_call(name, route)``.
+
+    Why this is needed: ``init()`` at dashboard.js:838-839 calls
+    ``fetch('config.json').then(r => r.json())`` directly.  A test
+    that 404s the artifact URL would crash ``.json()`` on the
+    "not found" body, the ``init().catch`` handler would set the
+    chip to "PAGE INIT FAILED", and ``verifyArtifacts()`` would
+    never run.  Serving the real artifact on the first call lets
+    ``init()`` wire the DOM so ``verifyArtifacts()`` (which uses
+    ``cache: 'no-store'`` and is the authoritative chip-state
+    setter) can report the failure state the test is exercising.
+
+    ``on_second_call`` receives ``(name, route)`` where ``name`` is
+    ``"config.json"`` or ``"model.json"`` and ``route`` is the
+    Playwright Route object.  The callback must call
+    ``route.fulfill(...)`` or ``route.continue_()`` exactly once.
+
+    All non-artifact requests pass through to the real server.
+    """
+    base = url.rsplit("/", 1)[0]  # strip "index.html"
+    real_config = urllib.request.urlopen(base + "/config.json").read()
+    real_model = urllib.request.urlopen(base + "/model.json").read()
+    state: dict[str, int] = {"config.json": 0, "model.json": 0}
+
+    def _route(route):
+        for name in state:
+            if route.request.url.endswith(name):
+                state[name] += 1
+                if state[name] == 1:
+                    body = real_config if name == "config.json" else real_model
+                    route.fulfill(status=200,
+                                  content_type="application/json",
+                                  body=body)
+                else:
+                    on_second_call(name, route)
+                return
+        route.continue_()
+
+    try:
+        yield _route
+    finally:
+        # ``page.unroute`` is the caller's responsibility -- the
+        # context manager only owns the closure's lifetime.  The
+        # caller can either unroute after the block (preferred, so
+        # the route lives only across the test action) or accept
+        # that the route stays for the rest of the test method.
+        pass
+
+
 @unittest.skipUnless(HAVE, "playwright not installed or docs/index.html missing")
 class TestHudSmoke(unittest.TestCase):
     """End-to-end checks against the published HUD."""
@@ -226,6 +282,27 @@ class TestHudSmoke(unittest.TestCase):
         # previous one.
         self._console_errors.clear()
 
+    def _override_probes(self, on_second_call):
+        """Install a counter-based route that serves the real
+        ``config.json``/``model.json`` on the first call (so
+        ``init()`` can render the page) and delegates every
+        subsequent call to ``on_second_call``.  Returns the route
+        handler so the caller can unroute it.  See the
+        ``_artifact_probe_override`` docstring for why the counter
+        is needed (init()'s direct ``.json()`` call would crash on
+        a 404 body and the catch handler would override the chip
+        state the test is exercising).
+        """
+        ctx = _artifact_probe_override(self.url, on_second_call)
+        route = ctx.__enter__()
+        self._page.route("**/*", route)
+
+        def _unroute():
+            self._page.unroute("**/*", route)
+            ctx.__exit__(None, None, None)
+
+        return _unroute
+
     def _goto(self):
         # ``wait_until="load"`` is enough; the sentinel poll below
         # covers the async init() completion.  ``networkidle`` interacts
@@ -284,6 +361,15 @@ class TestHudSmoke(unittest.TestCase):
         self.assertGreater(len(self.health_exclude_params), 0,
                            "no health_exclude parameters found in ml/parts.py")
         for pid, key in self.health_exclude_params:
+            # The "overall" part is the aggregate health column; it is
+            # intentionally not rendered as a card (see dashboard.js
+            # ``buildGrid()``'s ``if (pid === "overall") continue;``).
+            # The display-only contract is verified for the per-part
+            # cards below; there is no per-param modal row to check
+            # for "overall" because the modal is only opened from a
+            # card click.
+            if pid == "overall":
+                continue
             card = self._page.locator(f"#card_{pid}")
             self.assertTrue(card.count() > 0, f"missing card #{pid}")
             card.first.click()
@@ -307,19 +393,18 @@ class TestHudSmoke(unittest.TestCase):
             self._page.keyboard.press("Escape")
 
     def test_05_retrain_chip_is_error_when_both_probes_404(self):
-        # Inject 404s for both artifacts without touching the real
-        # files.  All other requests pass through.
-        def _route_404(route):
-            if route.request.url.endswith("config.json") or \
-               route.request.url.endswith("model.json"):
-                route.fulfill(status=404, body="not found")
-            else:
-                route.continue_()
-        self._page.route("**/*", _route_404)
+        # First probe call (from init()) gets the real artifact so the
+        # page can render.  The second probe call (from
+        # verifyArtifacts()) is the authoritative chip-state setter,
+        # so 404-ing it here exercises the "both probes fail -> error"
+        # branch of the chip contract.
+        def _second(name, route):
+            route.fulfill(status=404, body="not found")
+        unroute = self._override_probes(_second)
         try:
             self._goto()
         finally:
-            self._page.unroute("**/*", _route_404)
+            unroute()
         chip_class = self._page.locator(
             "#chip_retrain"
         ).get_attribute("class") or ""
@@ -332,16 +417,31 @@ class TestHudSmoke(unittest.TestCase):
         )
 
     def test_06_retrain_chip_is_pending_when_one_probe_404s(self):
-        def _route_one_404(route):
-            if route.request.url.endswith("config.json"):
+        # The probe-overrides serve the real model.json on every call
+        # so the model side stays "ok"; the second config.json call
+        # 404s so the chip lands on the "exactly one probe fails ->
+        # pending" branch.
+        def _second(name, route):
+            if name == "config.json":
                 route.fulfill(status=404, body="not found")
             else:
-                route.continue_()
-        self._page.route("**/*", _route_one_404)
+                # Re-use the first-call body for model.json; the real
+                # artifact is what verifyArtifacts() needs to see
+                # "ok" on.  ``route.continue_()`` would also work but
+                # the test must remain robust to the server being
+                # torn down before this second call resolves.
+                import json as _json
+                real_model = urllib.request.urlopen(
+                    self.url.rsplit("/", 1)[0] + "/model.json"
+                ).read()
+                route.fulfill(status=200,
+                              content_type="application/json",
+                              body=real_model)
+        unroute = self._override_probes(_second)
         try:
             self._goto()
         finally:
-            self._page.unroute("**/*", _route_one_404)
+            unroute()
         chip_class = self._page.locator(
             "#chip_retrain"
         ).get_attribute("class") or ""
@@ -362,19 +462,27 @@ class TestHudSmoke(unittest.TestCase):
         # exact lie this gate is meant to prevent.  test_06 covers
         # the HTTP-failure-pending branch; this test covers the
         # 2xx+garbage-error branch on the opposite side of the
-        # symmetry.
-        def _route_garbage_model(route):
-            if route.request.url.endswith("model.json"):
+        # symmetry.  The first probe call (init's) gets the real
+        # model.json so the page can render; the second probe call
+        # (verifyArtifacts') gets a 200 with a non-JSON body, which
+        # exercises the "parse -> error" branch.
+        def _second(name, route):
+            if name == "model.json":
                 route.fulfill(status=200,
                               content_type="application/json",
                               body="<html>oops</html>")
             else:
-                route.continue_()
-        self._page.route("**/*", _route_garbage_model)
+                real_config = urllib.request.urlopen(
+                    self.url.rsplit("/", 1)[0] + "/config.json"
+                ).read()
+                route.fulfill(status=200,
+                              content_type="application/json",
+                              body=real_config)
+        unroute = self._override_probes(_second)
         try:
             self._goto()
         finally:
-            self._page.unroute("**/*", _route_garbage_model)
+            unroute()
         chip_class = self._page.locator(
             "#chip_retrain"
         ).get_attribute("class") or ""
